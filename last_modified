@@ -1,0 +1,99 @@
+# Blosxom Plugin: last_modified
+# Author(s): Kyo Nagashima <kyo@hail2u.net>
+# Version: 2006-09-21
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+package last_modified;
+
+use strict;
+use vars qw($string);
+
+# --- Configurable variables -----------
+
+my $wb_dir = "$blosxom::plugin_state_dir/writeback";
+my $wb_ext = "wb";
+
+# --- Plug-in package variables --------
+
+my $mtime;
+
+# --------------------------------------
+
+use CGI qw(:standard);
+use File::stat;
+use HTTP::Date;
+
+sub start {
+  $string = "Unknown";
+  return 0 if $ENV{'QUERY_STRING'};
+  return 0 if $blosxom::flavour ne $blosxom::default_flavour;
+  return 0 if $blosxom::path_info_yr;
+
+  return 1;
+}
+
+sub filter {
+  my($pkg, $files_ref, $others_ref) = @_;
+
+  my(@files, @mtimes);
+
+  my $currentpath = "$blosxom::datadir/$blosxom::path_info";
+  $currentpath =~ s/\.$blosxom::flavour$//;
+
+  foreach (keys %$files_ref) {
+    push @files, $_ if /^\Q$currentpath\E/;
+  }
+
+  @files = sort { $files_ref->{$b} <=> $files_ref->{$a} } @files;
+  @files = splice @files, 0, $blosxom::num_entries;
+
+  foreach my $file (@files) {
+    push @mtimes, stat($file)->mtime if -f $file;
+    $file =~ s/^$blosxom::datadir/$wb_dir/;
+    $file =~ s/$blosxom::file_extension$/$wb_ext/;
+    push @mtimes, stat($file)->mtime if -f $file;
+  }
+
+  @mtimes = sort { $b <=> $a } @mtimes;
+  $mtime  = $mtimes[0];
+  $string = &format_time_w3c($mtime);
+
+  return 1;
+}
+
+sub skip {
+  if ($ENV{'HTTP_IF_MODIFIED_SINCE'}) {
+    my $since = $ENV{'HTTP_IF_MODIFIED_SINCE'};
+    $since =~ s/;.*$//;
+    $since = str2time($since);
+
+    if (defined($since) and $since >= $mtime) {
+      $blosxom::header->{-status} = '304 Not Modified';
+      $blosxom::header->{-Last_modified} = time2str($mtime);
+      $blosxom::output = '';
+
+      return 1;
+    }
+  }
+
+  $blosxom::header->{-Last_modified} = time2str($mtime);
+
+  return 0;
+}
+
+sub format_time_w3c {
+  my $time = shift;
+
+  my($ss, $nn, $hh, $dd, $mm, $yy, $ww) = localtime($time);
+  $yy = $yy + 1900;
+  $mm = sprintf "%02d", ++$mm;
+  $dd = sprintf "%02d", $dd;
+  $hh = sprintf "%02d", $hh;
+  $nn = sprintf "%02d", $nn;
+  $ss = sprintf "%02d", $ss;
+  $time = "$yy-$mm-$dd" . "T" . "$hh:$nn:$ss+09:00";
+
+  return $time;
+}
+
+1;

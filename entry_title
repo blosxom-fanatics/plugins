@@ -1,0 +1,48 @@
+# Blosxom Plugin: entry_title
+# Author(s): Kyo Nagashima <kyo@hail2u.net>
+# Version: 2009-04-01T23:55:42+09:00
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+package entry_title;
+
+use strict;
+use vars qw($title);
+
+# --- Configurable variables -----------
+
+# separator string between $blog_title and $title
+my $title_sep = " - ";
+
+# --- Plug-in package variables --------
+
+# --------------------------------------
+
+use FileHandle;
+
+my $fh = new FileHandle;
+
+sub start {
+  if ($blosxom::path_info !~ /\.$blosxom::flavour$/) {
+    return 0;
+  }
+
+  return 1;
+}
+
+sub head {
+  my($pkg, $path, $head_ref) = @_;
+
+  $path =~ s/\.$blosxom::flavour/\.$blosxom::file_extension/;
+  my $file = "$blosxom::datadir/$path";
+
+  if (-f $file and $fh->open($file)) {
+    chomp($title = <$fh>);
+    $fh->close;
+  }
+
+  $title = $title_sep . $title if $title;
+
+  return 1;
+}
+
+1;

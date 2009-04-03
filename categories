@@ -1,0 +1,203 @@
+# Blosxom Plugin: categories
+# Author(s): Kyo Nagashima <kyo@hail2u.net>
+# Version: 2005-09-11
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+# This plugin is simplified version of "categories" plugin.
+# "categories" plugin maybe found at:
+# http://www.blosxom.com/plugins/category/categories.htm
+
+package categories;
+
+use strict;
+use vars qw($categories $title $name);
+
+# --- Configuration Variables ----------
+
+# should the story-count add up?
+my $add_up_story_count = 1;
+
+# should the story-count display?
+my $display_story_count = 0;
+
+# directories to include, but not children of -- full name under $datadir
+my @prune_dirs = qw!/draft /old /freeze!;
+
+# friendly name of directories
+my $friendly_name = {
+  'alt-shell' => 'Alternative Shell',
+  'blog'      => 'Blog',
+  'blosxom'   => 'Blosxom',
+  'coding'    => 'Coding',
+  'foaf'      => 'FOAF',
+  'gadget'    => 'Gadget',
+  'game'      => 'Game',
+  'internet'  => 'Internet',
+  'media'     => 'Media',
+  'misc'      => 'Miscellaneous',
+  'rss'       => 'RSS',
+  'software'  => 'Software',
+  'sports'    => 'Sports',
+  'webdesign' => 'Web Design',
+};
+
+# separator string between $blog_title and $categories::name
+my $title_sep = " - ";
+
+# separater string between each name of category
+my $name_sep = " &#187; ";
+
+# --- Plug-in package variables --------
+
+my %children;
+my %stories;
+my %seen;
+
+# --------------------------------------
+
+sub start {
+  return 1;
+}
+
+sub filter {
+  my($pkg, $files) = @_;
+
+  foreach (keys %$files) {
+    my($dir, $file) = m!(.*)/(.*)!;
+    my $child;
+    $stories{$dir}++;
+
+    while ($dir ne $blosxom::datadir) {
+      ($dir, $child) = ($dir =~ m!(.*)/(.*)!);
+      $stories{$dir}++ if $add_up_story_count;
+
+      if (!$seen{"$dir/$child"}++) {
+        push @{$children{$dir}}, $child;
+      }
+    }
+  }
+
+  $categories = report_root() if defined($children{$blosxom::datadir});
+
+  return 1;
+}
+
+sub head {
+  if (
+    !$blosxom::path_info_yr and
+    $blosxom::path_info and
+    ($blosxom::path_info !~ m|.*?/?\w+\.\w+$|)
+  ) {
+    $title = '';
+    my @path_info = split(/\//, $blosxom::path_info);
+
+    foreach (@path_info) {
+      next if !$_;
+      $_ = $friendly_name->{$_} if $friendly_name->{$_};
+      $title .= qq!$name_sep$_!;
+    }
+  }
+
+  $title =~ s!^$name_sep!$title_sep!;
+
+  return 1;
+}
+
+sub story {
+  my($pkg, $path, $fn, $story_ref, $title_ref, $body_ref) = @_;
+
+  $name = '';
+  my @name = split(/\//, $path);
+
+  foreach (@name) {
+    next if !$_;
+    $_ = $friendly_name->{$_} if $friendly_name->{$_};
+    $name .= qq!$name_sep$_!;
+  }
+
+  $name =~ s!^$name_sep!!;
+
+  return 1;
+}
+
+sub report_root {
+  my $results = report_categories_start();
+  # $results .= report_dir_start('', 'all entries', $stories{$blosxom::datadir});
+
+  foreach (sort @{$children{$blosxom::datadir}}) {
+    $results .= report_dir('/', $_);
+  }
+
+  # $results .= report_dir_end();
+  $results .= report_categories_end();
+
+  return $results;
+}
+
+sub report_categories_start {
+  return qq!<ul>\n!;
+}
+
+sub report_dir_start {
+  my($fulldir, $thisdir, $numstories) = @_;
+
+  $numstories ||= 0;
+  $thisdir = $friendly_name->{$thisdir} if $friendly_name->{$thisdir};
+
+  return qq!<li><a href="$blosxom::url${fulldir}" title="$thisdir">$thisdir</a> ($numstories)\n<ul>\n! if $display_story_count;
+  return qq!<li><a href="$blosxom::url${fulldir}" title="$thisdir">$thisdir</a>\n<ul>\n!;
+}
+
+sub report_dir {
+  my($parent, $dir) = @_;
+
+  my $results;
+  local $_;
+
+  if (
+    !defined($children{"$blosxom::datadir$parent$dir"}) or
+    is_prune_dir("$parent$dir")
+  ) {
+    $results = report_dir_leaf("$parent$dir/", "$dir", $stories{"$blosxom::datadir$parent$dir"});
+  } else {
+    $results = report_dir_start("$parent$dir/", "$dir", $stories{"$blosxom::datadir$parent$dir"});
+
+    foreach (sort @{$children{"$blosxom::datadir$parent$dir"}}) {
+      $results .= report_dir("$parent$dir/", $_);
+    }
+
+    $results .= report_dir_end();
+  }
+
+  return $results;
+}
+
+sub report_dir_leaf {
+  my($fulldir, $thisdir, $numstories) = @_;
+
+  $numstories ||= 0;
+  $thisdir = $friendly_name->{$thisdir} if $friendly_name->{$thisdir};
+
+  return qq!<li><a href="$blosxom::url${fulldir}" title="$thisdir">$thisdir</a> ($numstories)</li>\n! if $display_story_count;
+  return qq!<li><a href="$blosxom::url${fulldir}" title="$thisdir">$thisdir</a></li>\n!;
+}
+
+sub report_dir_end {
+  return qq!</ul>\n</li>\n!;
+}
+
+sub report_categories_end {
+  return qq!</ul>!;
+}
+
+sub is_prune_dir {
+  my($dir) = @_;
+
+  foreach (@prune_dirs) {
+    return 1 if $dir eq $_;
+  }
+
+  return 0;
+}
+
+1;

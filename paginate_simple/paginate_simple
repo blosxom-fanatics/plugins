@@ -1,0 +1,91 @@
+# Blosxom Plugin: paginate_simple
+# Author(s): Kyo Nagashima <kyo@hail2u.net>
+# Version: 2005-09-03
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+# This plugin is simplified version of "paginate" plugin.
+# "paginate" plugin maybe found at:
+# http://www.blosxom.com/plugins/display/paginate.htm
+
+package paginate_simple;
+
+use strict;
+use vars qw($prev $next $link_prev $link_next);
+
+# --- Configurable variables -----------
+
+# --- Plug-in package variables --------
+
+my ($currentpath, $num_files, $pages, $page, $skip);
+
+# --------------------------------------
+
+use CGI qw(Delete param url);
+
+sub start {
+  Delete(-name => '-quiet');
+  $currentpath = "$blosxom::datadir/$blosxom::path_info";
+
+  if (!-d $currentpath or $blosxom::path_info_yr) {
+    return 0;
+  }
+
+  return 1;
+}
+
+sub filter {
+  my ($pkg, $files_ref) = @_;
+
+  foreach (keys %$files_ref) {
+    if (!/^$currentpath/) {
+      delete $files_ref->{$_};
+    }
+  }
+
+  $num_files = scalar(keys %$files_ref);
+  $pages = $num_files / $blosxom::num_entries;
+  $pages = int($pages + 1) unless $pages == int($pages);
+  ($page) = (param("page") =~ /(\d+)/);
+  $page ||= 1;
+  $skip = $blosxom::num_entries * ($page - 1);
+
+  return 1;
+}
+
+sub sort {
+  return sub {
+    my ($files_ref) = @_;
+
+    $num_files = scalar(keys %$files_ref);
+    my @sorted = sort {
+      $files_ref->{$b} <=> $files_ref->{$a}
+    } keys %$files_ref;
+
+    return @sorted[$skip .. $num_files - 1];
+  };
+}
+
+sub head {
+  my ($pkg, $currentdir, $head_ref) = @_;
+
+  if ($page > 1) {
+    param('page' => $page - 1);
+    my $prev_url = url(-path_info => 1, -query => 1);
+    $prev_url =~ s/\?page=1// if ($page == 2);
+    $link_prev = qq!<link rel="previous" href="$prev_url" />!;
+    $prev = &$blosxom::template($currentdir, 'paginate_simple_prev', $blosxom::flavour) || '<p><a href="$paginate_simple::prev_url">&#171; Go to previous page</a></p>';
+    $prev =~ s/\$paginate_simple::prev_url/$prev_url/ge;
+  }
+
+  if (($page + 1) <= $pages) {
+    param('page' => $page + 1);
+    my $next_url = url(-path_info => 1, -query => 1);
+    $link_next = qq!<link rel="next" href="$next_url" />!;
+    $next = &$blosxom::template($currentdir, 'paginate_simple_next', $blosxom::flavour) || '<p><a href="$paginate_simple::next_url">Go to next page &#187;</a></p>';
+    $next =~ s/\$paginate_simple::next_url/$next_url/ge;
+  }
+
+  return 1;
+}
+
+1;

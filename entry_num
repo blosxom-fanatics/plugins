@@ -1,0 +1,29 @@
+# Blosxom Plugin: entries_num
+# Author(s): Kyo Nagashima <kyo@hail2u.net>
+# Version: 2004-07-07
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+package entry_num;
+
+use strict;
+use vars qw($number);
+
+# --- Configurable variables -----------
+
+# --- Plug-in package variables --------
+
+# --------------------------------------
+
+sub start {
+  return 1;
+}
+
+sub filter {
+  my($pkg, $files_ref) = @_;
+
+  $number = scalar(keys %$files_ref);
+
+  return 1;
+}
+
+1;

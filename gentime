@@ -1,0 +1,36 @@
+# Blosxom Plugin: gentime
+# Author(s): Kyo Nagashima <kyo@hail2u.net>
+# Version: 2004-08-28
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+package gentime;
+
+use strict;
+use vars qw($seconds);
+
+# --- Configurable variables -----------
+
+my $format = '%.3f';
+
+# --- Plug-in package variables --------
+
+my($start, $end) = (0, 0);
+
+# --------------------------------------
+
+use Time::HiRes;
+
+sub start {
+  $start = Time::HiRes::time;
+
+  return 1;
+}
+
+sub foot {
+  $end = Time::HiRes::time;
+  $seconds = sprintf($format, $end - $start);
+
+  return 1;
+}
+
+1;

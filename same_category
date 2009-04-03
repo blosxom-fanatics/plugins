@@ -1,0 +1,93 @@
+# Blosxom Plugin: same_category
+# Author(s): Kyo Nagashima <kyo@hail2u.net>
+# Version: 2006-09-21T06:11:54+09:00
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+package same_category;
+
+use strict;
+use vars qw($list);
+
+# --- Configurable variables -----------
+
+# include entries in sub directories or not
+my $include_subdir = 0;
+
+# number to display
+my $num = 5;
+
+# prefix
+my $prefix = <<"_EOD_";
+<div class="story">
+<h3>Recent entries from same category</h3>
+_EOD_
+
+# postfix
+my $postfix = <<"_EOD_";
+</div>
+_EOD_
+
+# --- Plug-in package variables --------
+
+my $category;
+
+# --------------------------------------
+
+use FileHandle;
+
+sub start {
+  return 0 unless $blosxom::path_info =~ /\./;
+
+  $category = $blosxom::path_info;
+  $category =~ m!(.*?)([^/]+)\.(.+)$!;
+  $category = "$blosxom::datadir/$1";
+
+  return 1;
+}
+
+sub filter {
+  my($pkg, $files_ref) = @_;
+
+  (my $path = $blosxom::path_info) =~ s/\..*?$//;
+  my $i = 0;
+
+  foreach my $file (sort {
+    $files_ref->{$b} <=> $files_ref->{$a}
+  } keys %$files_ref) {
+    next if $file =~ /\Q$path\E/;
+
+    if ($include_subdir) {
+      next if $file !~ m!^$category!;
+    } else {
+      next if $file !~ m!^$category[^/]+$!;
+    }
+
+    my($url, $title) = &getinfo($file);
+    $list .= qq!<li><a href="$url" title="$title">$title</a></li>\n!;
+    $i++;
+    last if $i >= $num;
+  }
+
+  $list = $list ? qq!$prefix<ol>\n$list</ol>\n$postfix! : "";
+  chomp $list;
+
+  return 1;
+}
+
+sub getinfo {
+  my $file = shift;
+
+  my($path, $fn) = $file =~ m!^$blosxom::datadir/(?:(.*)/)?(.*)\.$blosxom::file_extension!;
+  my $url = "$blosxom::url/$path/$fn.$blosxom::flavour";
+  my $fh = new FileHandle;
+  my $title = '';
+
+  if (-f $file && $fh->open("< $file")) {
+    chomp($title = <$fh>);
+    $fh->close;
+  }
+
+  return($url, $title);
+}
+
+1;

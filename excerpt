@@ -1,0 +1,32 @@
+# Blosxom Plugin: excerpt
+# Author(s): Kyo Nagashima <kyo@hail2u.net>
+# Version: 2004-05-20
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+package excerpt;
+
+use strict;
+use vars qw($body);
+
+# --- Configurable variables -----------
+
+# --- Plug-in package variables --------
+
+# --------------------------------------
+
+sub start {
+  return 1;
+}
+
+sub story {
+  my($pkg, $path, $fn, $story_ref, $title_ref, $body_ref) = @_;
+
+  $body = $$body_ref;
+  $body =~ s!\x0D|\x0A!!g;
+  $body =~ s!^.*?<p>(.*?)</p>.*?$!$1!;
+  $body =~ s!<.*?>!!g;
+
+  return 1;
+}
+
+1;

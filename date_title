@@ -1,0 +1,41 @@
+# Blosxom Plugin: date_title
+# Author(s): Kyo Nagashima <kyo@hail2u.net>
+# Version: 2004-03-10
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+package date_title;
+
+use strict;
+use vars qw($title);
+
+# --- Configurable variables -----------
+
+# --- Plug-in package variables --------
+
+# --------------------------------------
+
+sub start {
+  if (!$blosxom::path_info_yr) {
+    return 0;
+  }
+
+  return 1;
+}
+
+sub head {
+  my ($pkg, $path, $head_ref) = @_;
+
+  $title = qq! - $blosxom::path_info_yr!;
+
+  if ($blosxom::path_info_mo_num) {
+    $title .= qq!/$blosxom::path_info_mo_num!;
+
+    if ($blosxom::path_info_da) {
+      $title .= qq!/$blosxom::path_info_da!;
+    }
+  }
+
+  return 1;
+}
+
+1;

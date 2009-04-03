@@ -1,0 +1,50 @@
+# Blosxom Plugin: output2file
+# Author(s): Kyo Nagashima <kyo@hail2u.net>
+# Version: 2004-08-19
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+package output2file;
+
+use strict;
+
+# --- Configurable variables -----------
+
+my $password  = '********';
+my $outputdir = '/absolute/path/to/blosxom/datadir';
+
+# --- Plug-in package variables --------
+
+# --------------------------------------
+
+use CGI qw(:standard);
+use FileHandle;
+
+my $fh = new FileHandle;
+
+sub start {
+  if (param('output2file') eq $password) {
+    return 1;
+  }
+
+  return 0;
+}
+
+sub last {
+  my $file = $outputdir . $ENV{PATH_INFO};
+  my $res;
+
+  if (-f $file and $fh->open("> $file")) {
+    print $fh $blosxom::output;
+    $fh->close();
+    $res = "Success: '$file' is successfully output.\n";
+  } else {
+    $res = "Failure: '$file' is unsuccessfully output.\n";
+  }
+
+  $blosxom::header = {
+    -type => "text/plain; charset=$blosxom::blog_charset",
+  };
+  $blosxom::output = $res;
+}
+
+1;

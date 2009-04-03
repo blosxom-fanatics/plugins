@@ -1,0 +1,39 @@
+# Blosxom Plugin: oddoreven
+# Author(s): Kyo Nagashima <kyo@hail2u.net>
+# Version: 2005-08-26
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+package oddoreven;
+
+use strict;
+use vars qw($odd $even $str);
+
+# --- Configurable variables -----------
+
+# --- Plug-in package variables --------
+
+$odd  = 1;
+$even = 0;
+$str  = 'odd';
+
+# --------------------------------------
+
+sub start {
+  return 1;
+}
+
+sub story {
+  if ($odd) {
+    $odd  = 0;
+    $even = 1;
+    $str  = 'odd';
+  } else {
+    $odd  = 1;
+    $even = 0;
+    $str  = 'even';
+  }
+
+  return 1;
+}
+
+1;
