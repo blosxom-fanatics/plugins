@@ -1,6 +1,6 @@
 # Blosxom Plugin: date_title
 # Author(s): Kyo Nagashima <kyo@hail2u.net>
-# Version: 2004-03-10
+# Version: 2009-04-04T10:37:57+09:00
 # Blosxom Home/Docs/Licensing: http://www.blosxom.com/
 
 package date_title;
@@ -9,6 +9,9 @@ use strict;
 use vars qw($title);
 
 # --- Configurable variables -----------
+
+# separator string between $blog_title and $path_info_yr
+my $title_sep = " - ";
 
 # --- Plug-in package variables --------
 
@@ -25,7 +28,7 @@ sub start {
 sub head {
   my ($pkg, $path, $head_ref) = @_;
 
-  $title = qq! - $blosxom::path_info_yr!;
+  $title = qq!$title_sep$blosxom::path_info_yr!;
 
   if ($blosxom::path_info_mo_num) {
     $title .= qq!/$blosxom::path_info_mo_num!;
