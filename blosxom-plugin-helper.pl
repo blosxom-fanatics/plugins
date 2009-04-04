@@ -1,8 +1,8 @@
 #!/usr/local/bin/perl
 
-# blosxom-plugin-helper.pl v1.1
+# blosxom-plugin-helper.pl v1.1.1
 #
-# Copyright (c) 2005 Kyo Nagashima <kyo\@hail2u.net>, http://hail2u.net/
+# Copyright (c) 2005 Kyo Nagashima <kyo@hail2u.net>, http://hail2u.net/
 #
 # This script is free software; you can redistribute it and/or modify it
 # under the same terms as Perl itself.
@@ -19,7 +19,6 @@ my $plugin_name = shift;
 
 if (!$plugin_name or $plugin_name eq '--help') {
   print <<"_DATA_";
-
 blosxom-plugin-helper.pl v1.0
 Copyright (c) 2005 Kyo Nagashima <kyo\@hail2u.net>, http://hail2u.net/
 
@@ -180,7 +179,7 @@ http://groups.yahoo.com/group/blosxom/
 
 =item all about blosxom ML
 
-http://www.freeml.com/info/blosxom@freeml.com
+http://www.freeml.com/info/blosxom\@freeml.com
 
 =back
 
