@@ -1,0 +1,723 @@
+# Blosxom Plugin: Sociable
+# See the bottom of this file or type: perldoc sociable
+
+package sociable;
+use strict;
+use URI::Escape;
+use HTML::Entities;
+
+# --- Configurable variables -----
+
+# What flavours need the links?
+my @flavours = qw(html);
+
+# Which social bookmarking sites should we link to? See %sociable_known_sites
+# below for a complete list to sites to choose from.
+
+my @sites = qw(
+    Email
+    Sphinn
+    StumbleUpon
+    Facebook
+    del.icio.us
+    LinkedIn
+    TwitThis
+    Digg
+    Google
+    MySpace
+    Reddit
+    SlashDot
+    StumbleUpon
+    Technorati
+    YahooBuzz
+);
+
+# What's the directory URI for the favicons?
+my $icon_base = '/ui/img/sociable';
+
+# What's the tagline? Set it to '' or undef or 0 for no tagline.
+my $tagline = '';
+
+# Should links open a new window?
+my $use_new_window = 0;
+
+# Should we use Google Analytics to track sociable clicks?
+my $use_tracker = 1;
+
+# What's your primary feed URL?
+my $feed_url = 'http://feeds2.feedburner.com/justatheory/atomfull';
+
+# --------------------------------
+
+my %sociable_known_sites = (
+    'BarraPunto' => {
+        'favicon' => 'barrapunto.png',
+        'url' => 'http://barrapunto.com/submit.pl?subj=TITLE&amp;story=PERMALINK',
+    },
+
+    'blinkbits' => {
+        'favicon' => 'blinkbits.png',
+        'url' => 'http://www.blinkbits.com/bookmarklets/save.php?v=1&amp;source_url=PERMALINK&amp;title=TITLE&amp;body=TITLE',
+    },
+
+    'BlinkList' => {
+        'favicon' => 'blinklist.png',
+        'url' => 'http://www.blinklist.com/index.php?Action=Blink/addblink.php&amp;Url=PERMALINK&amp;Title=TITLE',
+    },
+
+    'BlogMemes' => {
+        'favicon' => 'blogmemes.png',
+        'url' => 'http://www.blogmemes.net/post.php?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'BlogMemes Fr' => {
+        'favicon' => 'blogmemes.png',
+        'url' => 'http://www.blogmemes.fr/post.php?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'BlogMemes Sp' => {
+        'favicon' => 'blogmemes.png',
+        'url' => 'http://www.blogmemes.com/post.php?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'BlogMemes Cn' => {
+        'favicon' => 'blogmemes.png',
+        'url' => 'http://www.blogmemes.cn/post.php?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'BlogMemes Jp' => {
+        'favicon' => 'blogmemes.png',
+        'url' => 'http://www.blogmemes.jp/post.php?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'blogmarks' => {
+        'favicon' => 'blogmarks.png',
+        'url' => 'http://blogmarks.net/my/new.php?mini=1&amp;simple=1&amp;url=PERMALINK&amp;title=TITLE',
+    },
+
+    'Blogosphere News' => {
+        'favicon' => 'blogospherenews.gif',
+        'url' => 'http://www.blogospherenews.com/submit.php?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'Blogsvine' => {
+        'favicon' => 'blogsvine.png',
+        'url' => 'http://blogsvine.com/submit.php?url=PERMALINK',
+    },
+
+    'blogtercimlap' => {
+        'favicon' => 'blogter.png',
+        'url' => 'http://cimlap.blogter.hu/index.php?action=suggest_link&amp;title=TITLE&amp;url=PERMALINK',
+    },
+
+    'Faves' => {
+        'favicon' => 'bluedot.png',
+        'url' => 'http://faves.com/Authoring.aspx?u=PERMALINK&amp;title=TITLE',
+    },
+
+    'Book.mark.hu' => {
+        'favicon' => 'bookmarkhu.png',
+        'url' => 'http://book.mark.hu/bookmarks.php/?action=add&amp;address=PERMALINK%2F&amp;title=TITLE',
+    },
+
+    'Bumpzee' => {
+        'favicon' => 'bumpzee.png',
+        'url' => 'http://www.bumpzee.com/bump.php?u=PERMALINK',
+    },
+
+    'co.mments' => {
+        'favicon' => 'co.mments.gif',
+        'url' => 'http://co.mments.com/track?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'connotea' => {
+        'favicon' => 'connotea.png',
+        'url' => 'http://www.connotea.org/addpopup?continue=confirm&amp;uri=PERMALINK&amp;title=TITLE',
+    },
+
+
+    'del.icio.us' => {
+        'favicon' => 'delicious.png',
+        'url' => 'http://del.icio.us/post?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'De.lirio.us' => {
+        'favicon' => 'delirious.png',
+        'url' => 'http://de.lirio.us/rubric/post?uri=PERMALINK;title=TITLE;when_done=go_back',
+    },
+
+    'Design Float' => {
+        'favicon' => 'designfloat.gif',
+        'url' => 'http://www.designfloat.com/submit.php?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'Digg' => {
+        'favicon' => 'digg.png',
+        'url' => 'http://digg.com/submit?phase=2&amp;url=PERMALINK&amp;title=TITLE',
+    },
+
+    'DotNetKicks' => {
+        'favicon' => 'dotnetkicks.png',
+        'url' => 'http://www.dotnetkicks.com/kick/?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'DZone' => {
+        'favicon' => 'dzone.png',
+        'url' => 'http://www.dzone.com/links/add.html?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'eKudos' => {
+        'favicon' => 'ekudos.gif',
+        'url' => 'http://www.ekudos.nl/artikel/nieuw?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'Email' => {
+        'favicon' => 'email_link.png',
+        'url' => 'mailto:?subject=TITLE&amp;body=PERMALINK',
+        'description' => encode_entities 'E-mail this story to a friend!',
+    },
+
+    'Facebook' => {
+        'favicon' => 'facebook.png',
+        'url' => 'http://www.facebook.com/share.php?u=PERMALINK&amp;t=TITLE',
+    },
+
+    'Fark' => {
+        'favicon' => 'fark.png',
+        'url' => 'http://cgi.fark.com/cgi/fark/farkit.pl?h=TITLE&amp;u=PERMALINK',
+    },
+
+    'feedmelinks' => {
+        'favicon' => 'feedmelinks.png',
+        'url' => 'http://feedmelinks.com/categorize?from=toolbar&amp;op=submit&amp;url=PERMALINK&amp;name=TITLE',
+    },
+
+    'Furl' => {
+        'favicon' => 'furl.png',
+        'url' => 'http://www.furl.net/storeIt.jsp?u=PERMALINK&amp;t=TITLE',
+    },
+
+    'Fleck' => {
+        'favicon' => 'fleck.gif',
+        'url' => 'http://extension.fleck.com/?v=b.0.804&amp;url=PERMALINK',
+    },
+
+    'GeenRedactie' => {
+        'favicon' => 'geenredactie.png',
+        'url'=> 'http://www.geenredactie.nl/submit?url=PERMALINK&amp;title=TITLE'
+    },
+
+    'Global Grind' => {
+        'favicon' => 'globalgrind.gif',
+        'url' => 'http://globalgrind.com/submission/submit.aspx?url=PERMALINK&amp;type=Article&amp;title=TITLE'
+    },
+
+    'Google' => {
+        'favicon' => 'googlebookmark.png',
+        'url' => 'http://www.google.com/bookmarks/mark?op=edit&amp;bkmk=PERMALINK&amp;title=TITLE'
+    },
+
+    'Gwar' => {
+        'favicon' => 'gwar.gif',
+        'url' => 'http://www.gwar.pl/DodajGwar.html?u=PERMALINK',
+    },
+
+    'Haohao' => {
+        'favicon' => 'haohao.png',
+        'url' => 'http://www.haohaoreport.com/submit.php?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'HealthRanker' => {
+        'favicon' => 'healthranker.gif',
+        'url' => 'http://healthranker.com/submit.php?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'Hemidemi' => {
+        'favicon' => 'hemidemi.png',
+        'url' => 'http://www.hemidemi.com/user_bookmark/new?title=TITLE&amp;url=PERMALINK',
+    },
+
+    'IndianPad' => {
+        'favicon' => 'indianpad.png',
+        'url' => 'http://www.indianpad.com/submit.php?url=PERMALINK',
+    },
+
+    'Internetmedia' => {
+        'favicon' => 'im.png',
+        'url' => 'http://internetmedia.hu/submit.php?url=PERMALINK'
+    },
+
+    'kick.ie' => {
+        'favicon' => 'kickit.png',
+        'url' => 'http://kick.ie/submit/?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'Kirtsy' => {
+        'favicon' => 'kirtsy.gif',
+        'url' => 'http://www.kirtsy.com/submit.php?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'laaik.it' => {
+        'favicon' => 'laaikit.png',
+        'url' => 'http://laaik.it/NewStoryCompact.aspx?uri=PERMALINK&amp;headline=TITLE&amp;cat=5e082fcc-8a3b-47e2-acec-fdf64ff19d12',
+    },
+
+    'Leonaut' => {
+        'favicon' => 'leonaut.gif',
+        'url' => 'http://www.leonaut.com/submit.php?url=PERMALINK&amp;title=TITLE'
+    },
+
+    'LinkArena' => {
+        'favicon' => 'linkarena.gif',
+        'url' => 'http://linkarena.com/bookmarks/addlink/?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'LinkaGoGo' => {
+        'favicon' => 'linkagogo.png',
+        'url' => 'http://www.linkagogo.com/go/AddNoPopup?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'LinkedIn' => {
+        'favicon' => 'linkedin.png',
+        'url' => 'http://www.linkedin.com/shareArticle?mini=true&amp;url=PERMALINK&amp;title=TITLE&amp;source=BLOGNAME&amp;summary=EXCERPT',
+    },
+
+    'Linkter' => {
+        'favicon' => 'linkter.png',
+        'url' => 'http://www.linkter.hu/index.php?action=suggest_link&amp;url=PERMALINK&amp;title=TITLE',
+    },
+
+    'Live' => {
+        'favicon' => 'live.png',
+        'url' => 'https://favorites.live.com/quickadd.aspx?marklet=1&amp;url=PERMALINK&amp;title=TITLE',
+    },
+
+    'Ma.gnolia' => {
+        'favicon' => 'magnolia.png',
+        'url' => 'http://ma.gnolia.com/bookmarklet/add?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'Meneame' => {
+        'favicon' => 'meneame.gif',
+        'url' => 'http://meneame.net/submit.php?url=PERMALINK',
+    },
+
+    'MisterWong' => {
+        'favicon' => 'misterwong.gif',
+        'url' => 'http://www.mister-wong.com/addurl/?bm_url=PERMALINK&amp;bm_description=TITLE&amp;plugin=soc',
+    },
+
+    'MisterWong.DE' => {
+        'favicon' => 'misterwong.gif',
+        'url' => 'http://www.mister-wong.de/addurl/?bm_url=PERMALINK&amp;bm_description=TITLE&amp;plugin=soc',
+    },
+
+    'Mixx' => {
+        'favicon' => 'mixx.png',
+        'url' => 'http://www.mixx.com/submit?page_url=PERMALINK&amp;title=TITLE',
+    },
+
+    'muti' => {
+        'favicon' => 'muti.png',
+        'url' => 'http://www.muti.co.za/submit?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'MyShare' => {
+        'favicon' => 'myshare.png',
+        'url' => 'http://myshare.url.com.tw/index.php?func=newurl&amp;url=PERMALINK&amp;desc=TITLE',
+    },
+
+    'MySpace' => {
+        'favicon' => 'myspace.png',
+        'url' => 'http://www.myspace.com/Modules/PostTo/Pages/?u=PERMALINK&amp;t=TITLE',
+    },
+
+    'N4G' => {
+        'favicon' => 'n4g.gif',
+        'url' => 'http://www.n4g.com/tips.aspx?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'NewsVine' => {
+        'favicon' => 'newsvine.png',
+        'url' => 'http://www.newsvine.com/_tools/seed&amp;save?u=PERMALINK&amp;h=TITLE',
+    },
+
+    'Netvouz' => {
+        'favicon' => 'netvouz.png',
+        'url' => 'http://www.netvouz.com/action/submitBookmark?url=PERMALINK&amp;title=TITLE&amp;popup=no',
+    },
+
+    'NuJIJ' => {
+        'favicon' => 'nujij.gif',
+        'url' => 'http://nujij.nl/jij.lynkx?t=TITLE&amp;u=PERMALINK',
+    },
+
+    'Ping.fm' => {
+        'favicon' => 'ping.gif',
+        'url' => 'http://ping.fm/ref/?link=PERMALINK&amp;title=TITLE',
+    },
+
+    'PlugIM' => {
+        'favicon' => 'plugim.png',
+        'url' => 'http://www.plugim.com/submit?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'Pownce' => {
+        'favicon' => 'pownce.gif',
+        'url' => 'http://pownce.com/send/link/?url=PERMALINK&amp;note_body=TITLE&amp;note_to=all'
+    },
+
+    'ppnow' => {
+        'favicon' => 'ppnow.png',
+        'url' => 'http://www.ppnow.net/submit.php?url=PERMALINK',
+    },
+
+    'Print' => {
+        'favicon' => 'printer.png',
+        'url' => 'javascript:window.print();',
+        'description' => encode_entities 'Print this article!',
+    },
+
+    'Propeller' => {
+        'favicon' => 'propeller.gif',
+        'url' => 'http://www.propeller.com/submit/?url=PERMALINK',
+    },
+
+    'Ratimarks' => {
+        'favicon' => 'ratimarks.png',
+        'url' => 'http://ratimarks.org/bookmarks.php/?action=add&address=PERMALINK&amp;title=TITLE',
+    },
+
+    'Rec6' => {
+        'favicon' => 'rec6.gif',
+        'url' => 'http://www.syxt.com.br/rec6/link.php?url=PERMALINK&amp;=TITLE',
+    },
+
+    'Reddit' => {
+        'favicon' => 'reddit.png',
+        'url' => 'http://reddit.com/submit?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'SalesMarks' => {
+        'favicon' => 'salesmarks.gif',
+        'url' => 'http://salesmarks.com/submit?edit[url]=PERMALINK&amp;edit[title]=TITLE',
+    },
+
+    'Scoopeo' => {
+        'favicon' => 'scoopeo.png',
+        'url' => 'http://www.scoopeo.com/scoop/new?newurl=PERMALINK&amp;title=TITLE',
+    },
+
+    'scuttle' => {
+        'favicon' => 'scuttle.png',
+        'url' => 'http://www.scuttle.org/bookmarks.php/maxpower?action=add&amp;address=PERMALINK&amp;title=TITLE',
+    },
+
+    'Segnalo' => {
+        'favicon' => 'segnalo.gif',
+        'url' => 'http://segnalo.alice.it/post.html.php?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'Shadows' => {
+        'favicon' => 'shadows.png',
+        'url' => 'http://www.shadows.com/features/tcr.htm?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'Simpy' => {
+        'favicon' => 'simpy.png',
+        'url' => 'http://www.simpy.com/simpy/LinkAdd.do?href=PERMALINK&amp;title=TITLE',
+    },
+
+    'Slashdot' => {
+        'favicon' => 'slashdot.png',
+        'url' => 'http://slashdot.org/bookmark.pl?title=TITLE&amp;url=PERMALINK',
+    },
+
+    'Smarking' => {
+        'favicon' => 'smarking.png',
+        'url' => 'http://smarking.com/editbookmark/?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'Socialogs' => {
+        'favicon' => 'socialogs.gif',
+        'url' => 'http://socialogs.com/add_story.php?story_url=PERMALINK&amp;story_title=TITLE',
+    },
+
+    'Spurl' => {
+        'favicon' => 'spurl.png',
+        'url' => 'http://www.spurl.net/spurl.php?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'SphereIt' => {
+        'favicon' => 'sphere.png',
+        'url' => 'http://www.sphere.com/search?q=sphereit:PERMALINK&amp;title=TITLE',
+    },
+
+    'Sphinn' => {
+        'favicon' => 'sphinn.gif',
+        'url' => 'http://sphinn.com/submit.php?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'StumbleUpon' => {
+        'favicon' => 'stumbleupon.png',
+        'url' => 'http://www.stumbleupon.com/submit?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'Symbaloo' => {
+        'favicon' => 'symbaloo.png',
+        'url' => 'http://www.symbaloo.com/nl/add/url=PERMALINK&amp;title=TITLE&amp;icon=http%3A//static01.symbaloo.com/_img/favicon.png',
+    },
+
+    'Taggly' => {
+        'favicon' => 'taggly.png',
+        'url' => 'http://taggly.com/bookmarks.php/pass?action=add&amp;address=',
+    },
+
+    'Technorati' => {
+        'favicon' => 'technorati.png',
+        'url' => 'http://technorati.com/faves?add=PERMALINK',
+    },
+
+    'TailRank' => {
+        'favicon' => 'tailrank.png',
+        'url' => 'http://tailrank.com/share/?text=&amp;link_href=PERMALINK&amp;title=TITLE',
+    },
+
+    'ThisNext' => {
+        'favicon' => 'thisnext.png',
+        'url' => 'http://www.thisnext.com/pick/new/submit/sociable/?url=PERMALINK&amp;name=TITLE',
+    },
+
+    'Tipd' => {
+        'favicon' => 'tipd.png',
+        'url' => 'http://tipd.com/submit.php?url=PERMALINK',
+    },
+
+    'Tumblr' => {
+        'favicon' => 'tumblr.gif',
+        'url' => 'http://www.tumblr.com/share?v=3&amp;u=PERMALINK&amp;t=TITLE&amp;s=',
+    },
+
+    'TwitThis' => {
+        'favicon' => 'twitter.gif',
+        'url' => 'http://twitter.com/home?status=PERMALINK',
+    },
+
+    'Upnews' => {
+            'favicon' => 'upnews.gif',
+            'url' => 'http://www.upnews.it/submit?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'Webnews.de' => {
+        'favicon' => 'webnews.gif',
+        'url' => 'http://www.webnews.de/einstellen?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'Webride' => {
+        'favicon' => 'webride.png',
+        'url' => 'http://webride.org/discuss/split.php?uri=PERMALINK&amp;title=TITLE',
+    },
+
+    'Wikio' => {
+        'favicon' => 'wikio.gif',
+        'url' => 'http://www.wikio.com/vote?url=PERMALINK',
+    },
+
+    'Wikio FR' => {
+        'favicon' => 'wikio.gif',
+        'url' => 'http://www.wikio.fr/vote?url=PERMALINK',
+    },
+
+    'Wikio IT' => {
+        'favicon' => 'wikio.gif',
+        'url' => 'http://www.wikio.it/vote?url=PERMALINK',
+    },
+
+    'Wists' => {
+        'favicon' => 'wists.png',
+        'url' => 'http://wists.com/s.php?c=&amp;r=PERMALINK&amp;title=TITLE',
+        'class' => 'wists',
+    },
+
+    'Wykop' => {
+        'favicon' => 'wykop.gif',
+        'url' => 'http://www.wykop.pl/dodaj?url=PERMALINK',
+    },
+
+    'Xerpi' => {
+        'favicon' => 'xerpi.gif',
+        'url' => 'http://www.xerpi.com/block/add_link_from_extension?url=PERMALINK&amp;title=TITLE',
+    },
+
+    'YahooBuzz' => {
+        'favicon' => 'yahoobuzz.gif',
+        'url' => 'http://buzz.yahoo.com/submit/?submitUrl=PERMALINK&amp;submitHeadline=TITLE&amp;submitSummary=EXCERPT&amp;submitCategory=science&amp;submitAssetType=text',
+        'description' => 'Yahoo! Buzz',
+    },
+
+    'YahooMyWeb' => {
+        'favicon' => 'yahoomyweb.png',
+        'url' => 'http://myweb2.search.yahoo.com/myresults/bookmarklet?u=PERMALINK&amp;=TITLE',
+    },
+
+    'Yigg' => {
+        'favicon' => 'yiggit.png',
+        'url' => 'http://yigg.de/neu?exturl=PERMALINK&amp;exttitle=TITLE',
+     },
+);
+
+our $links;
+$tagline      = encode_entities $tagline;
+my $blogname  = uri_escape $blosxom::blog_title;
+$feed_url     = uri_escape $feed_url;
+my $trackerjs = q{onclick="javascript:pageTracker._trackPageview(this.href.replace('^https?://', '/outgoing/'));" };
+
+my $base_url = "http://$ENV{SERVER_NAME}";
+
+sub start { 1 }
+sub story {
+    my($pkg, $path, $filename, $story_ref, $title_ref, $body_ref) = @_;
+
+    # We're only interested in the HTML flavour, at least for now.
+    return 1 unless grep { $_ eq $blosxom::flavour } @flavours;
+
+    # Get the post title and permalink.
+    my $title = uri_escape $blosxom::title;
+    my $permalink = $base_url . uri_escape "$path/$filename.$blosxom::flavour";
+
+    # Put together an excerpt.
+    my $excerpt = $meta::description;
+    if (!$excerpt && $$body_ref =~ m{<p>(.+?)</p>}ms) {
+        $excerpt = $1;
+    }
+    $excerpt =~ s/<[^>]+>//g;
+    $excerpt = uri_escape $excerpt;
+
+    # Start the sociable div.
+    $links  = qq{<div class="sociable">\n};
+    $links .= qq{<div class="sociable_tagline">$tagline</div>\n} if $tagline;
+    $links .= "<ul>\n";
+
+    # Assemble each of the links.
+    for my $site (@sites) {
+        my $config = $sociable_known_sites{$site} or next;
+        my $url = "$config->{url}";
+
+
+        # Replace stuff in the links.
+        for my $spec (
+            [ PERMALINK => $permalink ],
+            [ TITLE     => $title     ],
+            [ RSS       => $feed_url  ],
+            [ BLOGNAME  => $blogname  ],
+            [ EXCERPT   => $excerpt   ],
+        ) {
+            $url =~ s/\Q$spec->[0]/$spec->[1]/g;
+        }
+
+        # Determine the link description.
+        my $desc = $config->{description} || $site;
+
+        # Add the link.
+        $links .= '<li><a rel="nofollow" '
+            . ($use_new_window && $site ne 'Print' ? 'target="_blank" ' : '')
+            . ($use_tracker && $site !~ /^(?:Print|Email)$/ ? $trackerjs : '')
+            . qq{href="$url" title="$desc">}
+            . qq{<img src="$icon_base/$config->{favicon}" title="$desc" alt="$desc" class="sociable-hovers" />}
+            . "</a></li>\n";
+    }
+
+    # Close out the div and we're done!
+    $links .= "</ul>\n</div>\n";
+
+    return 1;
+}
+
+1;
+
+__END__
+
+=head1 NAME
+
+Blosxom Plug-in: Sociable
+
+=head1 SYNOPSIS
+
+Sociable is a plugin which adds social media buttons to your posts, and does
+so easily, and beautifully. It is a port of the Sociable plugin for WordPress,
+by Peter Harkins and Joost de Valk L<http://yoast.com/wordpress/sociable/>.
+
+=head1 USAGE
+
+Here's how to use the Sociable plugin:
+
+=over
+
+=item *
+
+Download and unpack the Sociable WordPress plugin from
+L<http://yoast.com/wordpress/sociable/>. You'll need it to get the latest
+graphics and CSS.
+
+=item *
+
+Copy the F<images> folder to your Blosxom server where it can be served by the
+Web server.
+
+=item *
+
+Copy the contents of F<sociable.css> to your blog's CSS. You might need to
+tweak it a bit to get the Sociable links to look nice with your layout.
+
+=item *
+
+Edit this file to set the configuration variables. Most important is to decide
+which Sociable links you want in your blog and what URI to use for the
+flavicon images.
+
+=item *
+
+Drop this file into your Blosxom F<plugins> folder.
+
+=item *
+
+Add C<$sociable::links> to the appropriate spot in your story templates.
+
+=back
+
+And that's it, enjoy!
+
+=head1 VERSION
+
+1.0.0
+
+=head1 AUTHOR
+
+David E. Wheeler <david@justatheory.com>, http://www.justatheory.com/
+
+=head1 SEE ALSO
+
+Blosxom Home/Docs/Licensing: http://www.raelity.org/apps/blosxom/
+
+Blosxom Plugin Docs: http://www.raelity.org/apps/blosxom/plugin.shtml
+
+=head1 BUGS
+
+=head1 LICENSE
+
+Copyright 2006 Peter Harkins <ph@malaprop.org>
+Copyright 2008 Joost de Valk <joost@joostdevalk.nl>
+Copyright 2009 David E. Wheeler <david@justatheory.com>
+
+This program is free software; you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation; either version 2 of the License, or (at your option) any later
+version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with
+this program; if not, write to the Free Software Foundation, Inc., 59 Temple
+Place, Suite 330, Boston, MA 02111-1307 USA

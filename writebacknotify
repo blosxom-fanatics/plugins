@@ -1,0 +1,109 @@
+# Blosxom Plugin: wbnotify
+# Author(s): Pasi Savolainen <psavo@iki.fi>
+# Version: 2003-11-20
+# Documentation: See the bottom of this file or type: perldoc wbnotify
+# Requirements: writebacks -plugin and a sendmail compatible mailer (most on
+#               unixen). On Windows, you can use 'Blat', a command-line
+#               mailer. You can find it here: http://www.interlog.com/~tcharron/blat.html
+#               (on windows you'll also have to modify the sendmail variable!)
+
+package writebacknotify;
+use strict;
+
+# --- Configurable variables -----
+
+# Address that writebacks will be mailed to.
+# *** This plugin will not action until you set it. ***
+my $wbaddr = 'david@kineticode.com';
+
+# Location of sendmail -executable. If default doesn't work, try to find the
+# right location and replace this variable with it.
+# This may help you find something suitable:
+# for i in `locate sendmail`; do if [ -x $i ]; then echo $i; fi; done;
+my $sendmail = "/usr/sbin/sendmail";
+
+# --------------------------------
+
+use CGI qw/:standard/;
+
+sub start {
+    # Only spring into action if POSTing to the writeback plug-in
+    return 1 unless $writeback::success;
+
+    if (open my $mail, "| $sendmail -t") {
+        my $name  = param('name');
+        my $url   = param('url');
+        my $title = param('title');
+        my $body  = param('comment') || param('excerpt');
+
+        print $mail <<"_MAIL_";
+From: wbnotify
+To: $wbaddr
+Subject: [wbnotify] $title
+Content-Type: text/plain
+X-Mailer: blosxom wbnotify plugin
+
+Your blog got a new comment at
+$blosxom::url/$blosxom::path_info:
+$name :: $url :
+$body
+_MAIL_
+        close $mail;
+    }
+
+    return 1;
+}
+
+1;
+
+__END__
+
+=head1 NAME
+
+Blosxom Plug-in: wbnotify
+
+=head1 SYNOPSIS
+
+Provides e-mail notification for WriteBacks, when using Rael's writebacks
+plugin.
+
+=head2 QUICK START
+
+Drop this wbnotify plug-in file into your plug-ins directory
+(whatever you set as $plugin_dir in blosxom.cgi).
+
+Wbnotify, being a well-behaved plug-in, won't do anything until you set
+$wbaddr, which is the email address you want writeback mailed to.
+
+=head1 INSTALLATION
+
+Drop wbnotify into your plug-ins directory ($blosxom::plugin_dir).
+
+=head1 CONFIGURATION
+
+=head2 (REQUIRED) SPECIFYING AN EMAIL ADDRESS
+
+Writeback, being a well-behaved plug-in, won't do anything until you set
+$wbaddr.
+
+=head1 AUTHOR
+
+Pasi Savolainen <psavo@iki.fi>, http://iki.fi/psavo/
+
+=head1 THANKS
+
+Rael Dornfest
+
+=head1 SEE ALSO
+
+Blosxom Home/Docs/Licensing: http://www.raelity.org/apps/blosxom/
+
+Blosxom Plugin Docs: http://www.raelity.org/apps/blosxom/plugin.shtml
+
+=head1 BUGS
+
+Address bug reports and comments to Pasi Savolainen <psavo@iki.fi>.
+
+=head1 LICENSE
+
+This software is licensed similarly to Blosxom.

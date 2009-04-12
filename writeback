@@ -1,0 +1,623 @@
+# Blosxom Plugin: writeback
+# Author(s): Rael Dornfest <rael@oreilly.com>
+#            David Wheeler <david@justatheory.com>
+# Version: 2004-07-08
+# Documentation: See the bottom of this file or type: perldoc writeback
+
+package writeback;
+use strict;
+use vars qw($writebacks $count $writeback_response
+            $trackback_path_and_filename $trackback_response $writeback_math_x
+            $writeback_math_y $writeback_math_op $success);
+
+# --- Configurable variables -----
+
+# Where should I keep the writeback hierarchy?
+# I suggest: $writeback_dir = "$blosxom::plugin_state_dir/writeback";
+#
+# NOTE: By setting this variable, you are telling the plug-in to go ahead
+# and create a writeback directory for you.
+my $writeback_dir = "$blosxom::plugin_state_dir/writeback";
+
+# What flavour should I consider an incoming trackback ping?
+# Otherwise trackback pings will be ignored!
+my $trackback_flavour = "trackback";
+
+# What file extension should I use for writebacks?
+# Make sure this is different from that used for your Blosxom weblog
+# entries, usually txt.
+my $file_extension = "wb";
+
+# What fields are used in your comments form and by trackbacks?
+my @fields = qw! name url title comment excerpt blog_name !;
+
+# What HTML attributes to ignore. Used only if HTML::Parser is installed.
+my @ignore_attr = qw(
+    bgcolor background color face style link alink vlink text id name dir
+    onblur onchange onclick ondblclick onfocus onkeydown onkeyup onload
+    onmousedown onmousemove onmouseout onmouseover onmouseup onreset
+    onselect onunload onsubmit onkeypress
+);
+
+# What HTMLtags to ignore ("<font>foo</font>" becomes "foo"). Used only if
+# HTML::Parser is installed.
+my @ignore_tags = qw(font bdo big body button form frame frameset h1 h2
+                     head hr html iframe img input label legend link map menu
+                     meta optgroup option param select span textarea title);
+
+# What HTML elements to ignore ("<script>foo</script>" becomes ""). Used only
+# if HTML::Parser is installed.
+my @ignore_elements = qw(script style applet area base basefont fieldset
+                         field noframes noscript object var xmp);
+
+# Tag to wrap the writeback submission in before passing it off to
+# HTML::Parser. Should be set to one of the tags in @ignore_tags.
+my $wrap_tag = 'body';
+
+# The number of hours after a posting to allow trackbacks. Set to 0 for
+# no timeout.
+my $trackback_timeout = 336; # 2 weeks.
+
+# --------------------------------
+
+# Comments for a story; use as $writeback::writebacks in flavour templates
+$writebacks = undef;
+$success    = 0;
+
+# Count of writebacks for a story; use as $writeback::count in flavour templates
+$count = undef;
+
+# The path and filename of the last story on the page (ideally, only 1 story
+# in this view) for displaying the trackback URL;
+# use as $writeback::trackback_path_and_filename in your foot flavour templates
+$trackback_path_and_filename = undef;
+
+# Response to writeback; use as $writeback::writeback_response in
+# flavour templates
+$writeback_response = undef;
+
+# Math variables to stem spambots
+$writeback_math_op = "+";
+
+# Response to a trackback ping; use as $writeback::trackback_response in
+# head.trackback flavour template
+$trackback_response =<<'TRACKBACK_RESPONSE';
+<?xml version="1.0" encoding="iso-8859-1"?>
+<response>
+<error></error>
+<message></message>
+</response>
+TRACKBACK_RESPONSE
+
+# --------------------------------
+
+my ($pref_name, $pref_url);
+
+$blosxom::template{'trackback'} = {
+  'content_type' => 'text/xml',
+  'head'         => '$writeback::trackback_response',
+  'date'         => ' ',
+  'story'        => ' ',
+  'foot'         => ' '
+};
+
+# --------------------------------
+
+use CGI qw/:standard/;
+use FileHandle;
+
+my $fh = FileHandle->new;
+
+# Strip potentially confounding bits from user-configurable variables
+$writeback_dir =~ s!/$!!; $file_extension =~ s!^\.!!;
+
+# Save Name and URL/Email via cookie if the cookies plug-in is available
+my $cookie;
+
+sub start {
+
+  ($writeback_math_x, $writeback_math_y) = ( int rand(10), int rand(10) );
+
+  # $writeback_dir must be set to activate writebacks
+  unless ( $writeback_dir ) {
+    warn "blosxom : writeback plugin > The \$writeback_dir configurable variable is not set; please set it to enable writebacks. Writebacks are disabled!\n";
+    return 0;
+  }
+
+  # the $writeback_dir exists, but is not a directory
+  if ( -e $writeback_dir and ( !-d $writeback_dir or !-w $writeback_dir ) ) { 
+    warn "blosxom : writeback plugin > The \$writeback_dir, $writeback_dir, must be a writeable directory; please move or remove it and Blosxom will create it properly for you.  Writebacks are disabled!\n";
+    return 0;
+  }
+
+  # the $writeback_dir does not yet exist, so Blosxom will create it
+  if ( !-e  $writeback_dir )  {
+
+    my $mkdir_r = mkdir("$writeback_dir", 0755);
+
+    warn $mkdir_r
+      ? "blosxom : writeback plugin > \$writeback_dir, $writeback_dir, created.\n"
+      : "blosxom : writeback plugin > There was a problem creating your \$writeback_dir, $writeback_dir. Writebacks are disabled!\n";
+
+    $mkdir_r or return 0;
+
+    my $chmod_r = chmod 0755, $writeback_dir;
+
+    warn $chmod_r
+      ? "blosxom : writeback plugin > \$writeback_dir, $writeback_dir, set to 0755 permissions.\n"
+      : "blosxom : writeback plugin > There was a problem setting permissions on \$writeback_dir, $writeback_dir. Writebacks are disabled!\n";
+
+    $chmod_r or return 0;
+
+    warn "blosxom : writeback plugin > writebacks are enabled!\n";
+  }
+
+  my $path_info = path_info();
+  my($path,$fn) = $path_info =~ m!^(?:(.*)/)?(.*)\.$blosxom::flavour!;
+  $path =~ m!^/! or $path = "/$path";
+  $path = "/$path";
+
+  # Only spring into action if POSTing to the writeback plug-in
+  POST: {
+  if ( request_method() eq 'POST' and (param('plugin') eq 'writeback' or $blosxom::flavour eq $trackback_flavour) ) {
+
+    # Ignore posts if we've timed out.
+    if ($trackback_timeout && tb_timed_out($path, $fn)) {
+        $writeback_response = "### Comments are closed. ###";
+        param(-name => 'z', -value => 1); # Make the math fail in writebacknotify
+        return 0;
+    }
+    my $p;
+    if (param('plugin') eq 'writeback' and param('z') != param('x') + param('y')) {
+        $writeback_response = "### Can't add? Can't post. Seeya, bot! ###";
+        return 0;
+    } elsif (param('comment') =~ /(?:viagra|casino|hoodia|cialis|ringtone|nude|cheerleader|katasto|topless|freestories|holdem|naked|sailermoon|soccerbabes|forums\.cc|texashold|proboards|noonhost|bravenet|acegame|freecum|phpbb|naszemiasto|rdttekox|alfablog|forumup|weight-loss|forumer|toy-story|poker|hydrocodone|phentermine|hugetits|animalsex|john-cena|boardzero|paris\s+hilton|fuck\.com|beep\.com|carookee\.com|hairyvagina|jessicasimpson|bbfun)/i) {
+        # Seeya spammer!
+        param(-name => 'z', -value => 1); # Make the math fail in writebacknotify
+        last POST;
+    }
+
+    foreach ( ('', split /\//, $path) ) {
+      $p .= "/$_";
+      $p =~ s!^/!!;
+      -d "$writeback_dir/$p" or mkdir "$writeback_dir/$p", 0755;
+    }
+
+    if ( $fh->open(">> $writeback_dir$path/$fn.$file_extension") ) {
+        if (eval { require HTML::Parser }) {
+            # Use HTML::Parser to parse the writeback submission and remove
+            # any unsightly XHTML elements and attributes.
+            my $parser = HTML::Parser->new(
+                api_version     => 3,
+                start_h         => [\&_tag, 'tokenpos, text'],
+                process_h       => ['', ''],
+                comment_h       => ['', ''],
+                declaration_h   => [\&_decl, 'tagname, text'],
+                default_h       => [\&_text, 'text'],
+                ignore_tags     => \@ignore_tags,
+                ignore_elements => \@ignore_elements,
+            );
+            require Text::Markdown;
+            my $md = Text::Markdown->new;
+            # Select the writeback file handle so that the HTML::Parser methods
+            # will just print to it. Don't you just love Perl magic?
+            select $fh;
+            foreach ( @fields ) {
+                ( my $p = $_ eq 'comment' ? $md->markdown(param($_)) : param($_) ) =~ s/\r?\n\r?/\r/mg;
+                print $fh "$_: ";
+                # The $wrap_tag tags will be stipped out.
+                $parser->parse("<$wrap_tag>$p</$wrap_tag>");
+                print "\n";
+            }
+        } else {
+            # Use a nasty regular expression.
+            foreach ( @fields ) {
+                my $p = param($_);
+                # A gross way to prevent tomfoolery. Consult _Mastering Regular
+                # Expressions_ to implement a better solution.
+                $p =~ s/<[^>]*>//mg;
+                $p =~ s/\r?\n\r?/\r/mg;
+                print $fh "$_: $p\n";
+            }
+        }
+
+        # Wrap it up!
+        print $fh "-----\n";
+        $fh->close();
+        select STDOUT;
+	$success = 1;
+
+        $trackback_response =~ s!<error></error>!<error>0</error>!m;
+        $trackback_response =~ s!<message></message>\n!!s;
+        $writeback_response = "Thanks for the writeback.";
+
+        # Make a note to save Name and URL/Email if save_preferences checked
+        param('save_preferences') and $cookie++;
+        # Pre-set Name and URL/Email based on submitted values
+        $pref_name = param('name') || '';
+        $pref_url = param('url') || '';
+
+    } else {
+      warn "couldn't >> $writeback_dir$path/$fn.$file_extension\n";
+
+      $trackback_response =~ s!<error></error>!<error>1</error>!m;
+      $trackback_response =~ s!<message>trackback error</message>!!m;
+      $writeback_response = "There was a problem posting your writeback.";
+    }
+  }
+}
+  1;
+}
+
+sub story {
+    my($pkg, $path, $filename, $story_ref, $title_ref, $body_ref) = @_;
+
+    $path =~ s{^/*}{};
+    $path &&= "/$path";
+
+    ($writebacks, $count)  = ('', 0);
+    my %param = ();
+
+    # Prepopulate Name and URL/Email with cookie-baked preferences, if any
+    if (
+        ($blosxom::plugins{cookies} || 0) > 0
+            and my $cookie = cookies::get('writeback')
+    ) {
+        $pref_name ||= $cookie->{'name'};
+        $pref_url ||= $cookie->{'url'};
+    }
+
+    if ( $fh->open("$writeback_dir$path/$filename.$file_extension") ) {
+        foreach my $line (<$fh>) {
+            $line =~ /^(.+?):\s*(.*)$/ and $param{$1} = $2 || '';
+            if ( $line =~ /^-----$/ ) {
+
+                my $writeback = $blosxom::template->(
+                    $path, writeback => $blosxom::flavour
+                ) || '<p><b>Name/Blog:</b> $writeback::name$writeback::blog_name<br /><b>URL:</b> $writeback::url<br /><b>Title:</b> $writeback::title<br /><b>Comment/Excerpt:</b> $writeback::comment$writeback::excerpt</p>';
+
+                $writeback =~ s/\$writeback::(\w+)/$param{$1} || ''/ge;
+                $writeback =~ s{<a href="">([^<]+)</a>}{$1}g;
+                $writebacks .= $writeback;
+                $count++;
+            }
+        }
+    }
+
+    $trackback_path_and_filename = "$path/$filename";
+
+    1;
+}
+
+sub foot {
+    cookies::add(
+        cookie(
+            -name=>'writeback', 
+            -value=>{ 'name' => param('name'), 'url' => param('url') }, 
+            -path=>$cookies::path,
+            -domain=>$cookies::domain,
+            -expires=>$cookies::expires
+        )
+    ) if ($blosxom::plugins{cookies} || 0) > 0 and $cookie;
+}
+
+sub show_trackback {
+    shift;
+    my $args = shift;
+    if (tb_timed_out($args->{path}, $args->{fn})) {
+        return '' if @_;
+        return 1;
+    }
+
+    return shift if @_;
+    return 0;
+}
+
+sub tb_timed_out {
+    my ($path, $fn) = @_;
+    return (time - (stat "$blosxom::datadir$path/$fn.txt")[9]) / 3600 > $trackback_timeout;
+}
+
+sub timed_out {
+    shift;
+    my $args = shift;
+    return shift if tb_timed_out($args->{path}, $args->{fn});
+    return '';
+}
+
+# make it easier to look up attributes
+my %ignore_attr = map { $_ => 1} @ignore_attr;
+
+sub _tag {
+    my($pos, $text) = @_;
+    if (@$pos >= 4) {
+        # kill some attributes
+        my($k_offset, $k_len, $v_offset, $v_len) = @{$pos}[-4 .. -1];
+        my $next_attr = $v_offset ? $v_offset + $v_len : $k_offset + $k_len;
+        my $edited;
+        while (@$pos >= 4) {
+            ($k_offset, $k_len, $v_offset, $v_len) = splice @$pos, -4;
+            if ($ignore_attr{lc substr($text, $k_offset, $k_len)}) {
+                substr($text, $k_offset, $next_attr - $k_offset) = "";
+                $edited++;
+            }
+            $next_attr = $k_offset;
+        }
+        # if we killed all attributed, kill any extra whitespace too
+        $text =~ s/^(<\w+)\s+>$/$1>/ if $edited;
+    }
+    print $text;
+}
+
+sub _decl {
+    my $type = shift;
+    print shift if $type eq "doctype";
+}
+
+sub _text {
+    print shift;
+}
+
+1;
+
+__END__
+
+=head1 NAME
+
+Blosxom Plug-in: writeback
+
+=head1 SYNOPSIS
+
+Provides WriteBacks, a combination of comments and TrackBacks
+[http://www.movabletype.org/trackback/].
+
+All comments and TrackBack pings for a particular story are kept in
+F<$writeback_dir/$path/$filename.$file_extension>.
+
+=head2 QUICK START
+
+Drop this writeback plug-in file into your plug-ins directory (whatever you
+set as $plugin_dir in F<blosxom.cgi>).
+
+Writeback, being a well-behaved plug-in, won't do anything until you set
+$writeback_dir.
+
+While you can use the same directory as your blosxom $datadir (WriteBacks are
+saved as F<path/weblog_entry_name.wb>), it's probably better to keep them
+separate.
+
+Once set, the next time you visit your site, the writeback plug-in will
+perform some checks, creating the $writeback_dir and setting appropriate
+permissions if it doesn't already exist. (Check your F<error_log> for details
+of what's happening behind the scenes.)
+
+Move the contents of the flavours folder included in this distribution into
+your Blosxom data directory (whatever you set as $datadir in F<blosxom.cgi>).
+Don't move the folder itself, only the files it contains! If you don't have
+the the sample flavours handy, you can download them from
+L<http://www.blosxom.com/plugins/input/writeback.htm>.
+
+Point your browser at one of your Blosxom entries, specifying the writeback
+flavour (e.g. http://localhost/cgi-bin/blosxom.cgi/path/to/a/post.writeback)
+
+Enjoy!
+
+=head2 FLAVOUR TEMPLATE VARIABLES
+
+Wherever you wish all the WriteBacks for a particular story to appear in your
+flavour templates, use $writeback::writebacks.
+
+A count of WriteBacks for each story may be embedded in your flavour templates
+with $writeback::count.
+
+If you'd like, you can embed a "Thanks for the writeback." or "There was a
+problem posting your writeback." message after posting with
+$writeback::writeback_response.
+
+=head2 SAMPLE FLAVOUR TEMPLATES
+
+We've made sample flavour templates available to you to help with any learning
+curve this plug-in might require.
+
+Take a gander at the source HTML/XML for:
+
+=over 4
+
+=item F<story.writeback>
+
+A basic example of a single-entry story flavour with WriteBacks embedded. You
+should not use this as your default flavour since every story on the home page
+would have WriteBacks right there with the story itself.
+
+=item F<foot.writeback>
+
+Provides a simple comment form for posting to the WriteBack plug-in. B<Note:>
+The writeback plug-in requires the presence of a "plugin" form variable with
+the value set to "writeback"; this tells the plug-in that it should handle the
+incoming C<POST>ed data rather than leaving it for another plug-in.
+
+=item F<writeback.writeback>
+
+A sample flavour file for WriteBacks themselves. Think of a WriteBacks flavour
+file as a story flavour file for individual WriteBacks.
+
+=back
+
+=head2 FLAVOURING WRITEBACKS
+
+While the default flavour does a pretty good job, you can flavour your
+WriteBacks in the writeback flavour file (e.g. F<writeback.writeback>) using
+the following variables:
+
+=over 4
+
+=item $writeback::name$writeback::blog_name
+
+Name entered in comment form or weblog name used in TrackBack ping. Use
+both like this so that one value or the other always shows up.
+
+=item $writeback::url
+
+URL entered in comment form or TrackBack ping.
+
+=item $writeback::title
+
+Title entered in comment form or TrackBack ping.
+
+=item $writeback::comment$writeback::excerpt
+
+Comment entered in comment form in TrackBack ping.
+
+=item $writeback::pref_name and $writeback::pref_url
+
+Prepopulated with the values of the form or TrackBack ping, or the preferences
+stored in a 'writeback' cookie, if the cookie plug-in is installed and
+enabled.
+
+=back
+
+=head2 INVITING AND SUPPORTING TRACKBACKS
+
+You should provide the TrackBack ping URL for each story so that those wanting
+to TrackBack ping you manually know where to ping.
+$writeback::trackback_path_and_filename, together with $url and a TrackBack
+flavour, will provide them all they need. For example:
+
+  $url$writeback::trackback_path_and_filename.trackback
+
+The writeback plugin provides an XML response to TrackBack pings in the form
+of a baked-in trackback flavour. If you alter the value of $trackback_flavour
+(why would you?), you'll have to create a set of flavour templates by hand;
+all should be blank save the content_type (text/xml) and head
+($writeback::trackback_response).
+
+=head1 INSTALLATION
+
+Drop writeback into your plug-ins directory ($blosxom::plugin_dir).
+
+=head1 CONFIGURATION
+
+=head2 Specifying a WriteBack Directory (Required)
+
+Writeback, being a well-behaved plug-in, won't do anything until you set
+$writeback_dir, create the directory, and make it write-able by Blosxom.
+
+Create a directory to save WriteBacks to (e.g. $plugin_state_dir/writeback),
+and set $writeback_dir to the path to that directory.
+
+While you can use the same directory as your blosxom $datadir (WriteBacks are
+saved as F<path/weblog_entry_name.wb>), it's probably better to keep them
+separate.
+
+The writeback plug-in will create the appropriate paths to mimick your
+$datadir hierarchy on-the-fly. So, for a weblog entry in
+F<$datadir/some/path/or/other/entry.txt>, WriteBacks will be kept in
+F<$writeback_dir/some/path/or/other/entry.wb>.
+
+=head2 Altering the TrackBack Flavour (Optional)
+
+The $trackback_flavour variable sets the flavour the plug-in associated with
+incoming TrackBack pings. Unless it corresponds to the flavour associated with
+your trackback URL, the writeback plug-in will ignore incoming pings.
+
+=head2 Allowing HTML in WriteBacks (Optional)
+
+This version of writeback will use HTML::Parser to strip selectively HTML out
+of WriteBacks, if it is installed. If HTML::Parser is not installed, writeback
+simply strips all HTML from WriteBacks, just as it always has. But the nice
+thing about using HTML::Parser is that you can allow certain HTML tags to
+remain in WriteBacks, and just strip out those that could be problematic or
+that could change the formatting of your Bloxsom pages.
+
+By default, writeback will strip out a reasonable list of HTML tags and
+attributes that should keep your blog relatively safe from JavaScript exploits
+and the like. But you can modify what gets stripped out by editing the
+following variables:
+
+=over
+
+=item @ignore_attr
+
+A list of tag attributes to ignore, such as "onclick" and "style".
+
+=item @ignore_tags
+
+A list of HTML tags to ignore, such as "font" and "span". For these tags, the
+tags will be stripped out, but the content between the tags will remain. For
+example, "<font>foo</font>" will be output simply as "foo".
+
+=item @ignore_elements
+
+A list of HTML tags, such as "style" and "script", for which both the tag and
+the tag's content will be ignored. For example, "<script>foo</script>" will be
+output as "".
+
+=item $wrap_tag
+
+In order to properly output any WriteBack not wrapped in HTML tags, writeback
+wraps all of the content into a stored in @ignore_tags. This tag will
+therefore be stripped out, but any untagged content will remain. The default
+is "body", and you can probably leave this value.
+
+=back
+
+=head2 Specifying an Extension for WriteBack Files (Optional)
+
+The default extension for WriteBacks is "wb". You can change this, if you
+wish, by altering the $file_extension value.
+
+=head2 Specifying What Fields You Expect in Your Comments Form (Optional)
+
+The defaults are probably ok here, but you can specify that the writeback
+plug-in should look for more fields in your comments form by adding to this
+list. You should keep at least the defaults in place so as not to break
+anything.
+
+  my @fields = qw! name url title comment excerpt blog_name !;
+
+=head1 VERSION
+
+2004-07-08
+
+=head1 AUTHORS
+
+Rael Dornfest  <rael@oreilly.com>, L<http://www.raelity.org/>
+
+David Wheeler <david@justatheory.com>, L<http://www.justatheory.com/>
+
+HTML stripping code borrowed from an example script in the HTML::Parser
+distribution by Gisle Aas.
+
+=head1 SEE ALSO
+
+Blosxom Home/Docs/Licensing: http://www.raelity.org/apps/blosxom/
+
+Blosxom Plugin Docs: http://www.raelity.org/apps/blosxom/plugin.shtml
+
+=head1 BUGS
+
+Address bug reports and comments to the Blosxom mailing list
+[http://www.yahoogroups.com/group/blosxom].
+
+=head1 LICENSE
+
+Blosxom and this Blosxom Plug-in Copyright 2003-2004, Rael Dornfest & David
+Wheeler.
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the "Software"),
+to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
