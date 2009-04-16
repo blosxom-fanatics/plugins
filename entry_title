@@ -1,17 +1,21 @@
 # Blosxom Plugin: entry_title
 # Author(s): Kyo Nagashima <kyo@hail2u.net>
-# Version: 2009-04-01T23:55:42+09:00
+# Version: 2009-05-28
 # Blosxom Home/Docs/Licensing: http://www.blosxom.com/
 
 package entry_title;
 
 use strict;
+use warnings;
 use vars qw($title);
 
 # --- Configurable variables -----------
 
 # separator string between $blog_title and $title
 my $title_sep = " - ";
+
+# insert $title_sep after $title?
+my $append = 0;
 
 # --- Plug-in package variables --------
 
@@ -40,9 +44,87 @@ sub head {
     $fh->close;
   }
 
-  $title = $title_sep . $title if $title;
+  if ($append) {
+    $title = qq!$title$title_sep!;
+  } else {
+    $title = qq!$title_sep$title!;
+  }
 
   return 1;
 }
 
 1;
+
+__END__
+
+=head1 NAME
+
+Blosxom Plug-in: entry_title
+
+=head1 SYNOPSIS
+
+Allows you to use story title for title of a page in view per story.
+
+=head1 VERSION
+
+2009-05-28
+
+=head1 AUTHOR
+
+Kyo Nagashima E<lt>kyo@hail2u.netE<gt>, http://hail2u.net/
+
+=head1 INSTALLATION
+
+Drop entry_title into your plugins directory.
+
+=head1 SEE ALSO
+
+=over
+
+=item Blosxom Home/Docs/Licensing
+
+http://www.blosxom.com/
+
+=item Blosxom Plugin Docs
+
+http://www.blosxom.com/documentation/users/plugins.html
+
+=back
+
+=head1 BUGS
+
+Address bug reports and comments to:
+
+=over
+
+=item blosxom ML
+
+http://groups.yahoo.com/group/blosxom/
+
+=item all about blosxom ML
+
+http://www.freeml.com/info/blosxom@freeml.com
+
+=back
+
+=head1 LICENSE
+
+Copyright 2004-2009, Kyo Nagashima E<lt>kyo@hail2u.netE<gt>, http://hail2u.net/
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the "Software"),
+to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
