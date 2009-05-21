@@ -1,6 +1,6 @@
 # Blosxom Plugin: paging
 # Author(s): Kyo Nagashima <kyo@hail2u.net>
-# Version: 2005-09-30
+# Version: 2009-05-21
 # Blosxom Home/Docs/Licensing: http://www.blosxom.com/
 
 package paging;
@@ -102,7 +102,7 @@ sub head {
   my $j = $page;
   my $k = ($num == 0) ? $pages : int($num / 2);
 
-  if (($j - $k) < 0) {
+  if (($j - $k) <= 0) {
     $j = $k + 1;
   } elsif (($j + $k) > $pages) {
     $j = $pages - $k;
