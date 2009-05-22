@@ -1,6 +1,6 @@
 # Blosxom Plugin: back_and_forth
 # Author(s): Kyo Nagashima <kyo@hail2u.net>
-# Version: 1.2
+# Version: 2009-05-22
 # Blosxom Home/Docs/Licensing: http://www.blosxom.com/
 
 # This plugin is altenate version of "prevnextentry" plugin.
@@ -10,11 +10,16 @@
 package back_and_forth;
 
 use strict;
-use vars qw($prev $next $link_prev $link_next);
+use vars qw($next $prev $link_next $link_prev);
 
 # --- Configurable variables -----------
 
+# Do you want to output as XHTML?
+my $as_xhtml = 0;
+
 # --- Plug-in package variables --------
+
+my $xhtml = $as_xhtml ? ' /' : '';
 
 my @file_info;
 
@@ -22,14 +27,16 @@ my @file_info;
 
 use FileHandle;
 
+my $fh = new FileHandle;
+
 sub start {
-  return 0 unless $blosxom::path_info =~ /\./;
+  return 0 unless $blosxom::path_info =~ /\.$blosxom::flavour$/;
 
   return 1;
 }
 
 sub filter {
-  my ($pkg, $files_ref) = @_;
+  my($pkg, $files_ref) = @_;
 
   @file_info = sort {$files_ref->{$b} <=> $files_ref->{$a}} keys %$files_ref;
 
@@ -40,38 +47,37 @@ sub head {
   my($pkg, $path, $head_ref) = @_;
 
   $path =~ s/\.$blosxom::flavour/\.$blosxom::file_extension/;
-  my %path2idx = map {$file_info[$_] => $_} 0..$#file_info;
+  my %path2idx = map { $file_info[$_] => $_ } 0..$#file_info;
   my $index = $path2idx{"$blosxom::datadir/$path"};
 
   if ($index < $#file_info) {
-    my($prev_url, $prev_title) = &getinfo($index + 1, \@file_info);
-    $link_prev = qq!<link rel="previous" href="$prev_url" />!;
-    $prev = &$blosxom::template($path, 'back_and_forth_prev', $blosxom::flavour) || '<p><a href="$back_and_forth::prev_url">&#171; $back_and_forth::prev_title</a></p>';
-    $prev =~ s/\$back_and_forth::prev_url/$prev_url/ge;
-    $prev =~ s/\$back_and_forth::prev_title/$prev_title/ge;
+    my($next_url, $next_title) = &getinfo($index + 1, \@file_info);
+    $link_next = qq!<link rel="next" href="$next_url"$xhtml>!;
+    $next = &$blosxom::template($path, 'back_and_forth_next', $blosxom::flavour) || '<p><a href="$back_and_forth::next_url">$back_and_forth::next_title</a></p>';
+    $next =~ s/\$back_and_forth::next_url/$next_url/ge;
+    $next =~ s/\$back_and_forth::next_title/$next_title/ge;
   }
 
   if ($index > 0) {
-    my($next_url, $next_title) = &getinfo($index - 1, \@file_info);
-    $link_next = qq!<link rel="next" href="$next_url" />!;
-    $next = &$blosxom::template($path, 'back_and_forth_next', $blosxom::flavour) || '<p><a href="$back_and_forth::next_url">$back_and_forth::next_title &#187;</a></p>';
-    $next =~ s/\$back_and_forth::next_url/$next_url/ge;
-    $next =~ s/\$back_and_forth::next_title/$next_title/ge;
+    my($prev_url, $prev_title) = &getinfo($index - 1, \@file_info);
+    $link_prev = qq!<link rel="prev" href="$prev_url"$xhtml>!;
+    $prev = &$blosxom::template($path, 'back_and_forth_prev', $blosxom::flavour) || '<p><a href="$back_and_forth::prev_url">$back_and_forth::prev_title</a></p>';
+    $prev =~ s/\$back_and_forth::prev_url/$prev_url/ge;
+    $prev =~ s/\$back_and_forth::prev_title/$prev_title/ge;
   }
 
   return 1;
 }
 
 sub getinfo {
-  my($ai, $pi) = @_;
+  my($index, $file_info) = @_;
 
-  my $file = $pi->[$ai];
+  my $file = $file_info->[$index];
   my($path, $fn) = $file =~ m!^$blosxom::datadir/(?:(.*)/)?(.*)\.$blosxom::file_extension!;
-  my $url = "$blosxom::url/$path/$fn.$blosxom::flavour";
-  my $fh = new FileHandle;
+  my $url   = "/blog/$path/$fn.$blosxom::flavour";
   my $title = '';
 
-  if (-f $file && $fh->open("< $file")) {
+  if (-f $file and $fh->open($file)) {
     chomp($title = <$fh>);
     $fh->close;
   }
