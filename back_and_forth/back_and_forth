@@ -1,6 +1,6 @@
 # Blosxom Plugin: back_and_forth
 # Author(s): Kyo Nagashima <kyo@hail2u.net>
-# Version: 2009-05-22
+# Version: 2009-05-23
 # Blosxom Home/Docs/Licensing: http://www.blosxom.com/
 
 # This plugin is altenate version of "prevnextentry" plugin.
@@ -10,7 +10,7 @@
 package back_and_forth;
 
 use strict;
-use vars qw($next $prev $link_next $link_prev);
+use vars qw($prev $next $link_prev $link_next);
 
 # --- Configurable variables -----------
 
@@ -51,19 +51,19 @@ sub head {
   my $index = $path2idx{"$blosxom::datadir/$path"};
 
   if ($index < $#file_info) {
-    my($next_url, $next_title) = &getinfo($index + 1, \@file_info);
-    $link_next = qq!<link rel="next" href="$next_url"$xhtml>!;
-    $next = &$blosxom::template($path, 'back_and_forth_next', $blosxom::flavour) || '<p><a href="$back_and_forth::next_url">$back_and_forth::next_title</a></p>';
-    $next =~ s/\$back_and_forth::next_url/$next_url/ge;
-    $next =~ s/\$back_and_forth::next_title/$next_title/ge;
-  }
-
-  if ($index > 0) {
-    my($prev_url, $prev_title) = &getinfo($index - 1, \@file_info);
+    my($prev_url, $prev_title) = &getinfo($index + 1, \@file_info);
     $link_prev = qq!<link rel="prev" href="$prev_url"$xhtml>!;
     $prev = &$blosxom::template($path, 'back_and_forth_prev', $blosxom::flavour) || '<p><a href="$back_and_forth::prev_url">$back_and_forth::prev_title</a></p>';
     $prev =~ s/\$back_and_forth::prev_url/$prev_url/ge;
     $prev =~ s/\$back_and_forth::prev_title/$prev_title/ge;
+  }
+
+  if ($index > 0) {
+    my($next_url, $next_title) = &getinfo($index - 1, \@file_info);
+    $link_next = qq!<link rel="next" href="$next_url"$xhtml>!;
+    $next = &$blosxom::template($path, 'back_and_forth_next', $blosxom::flavour) || '<p><a href="$back_and_forth::next_url">$back_and_forth::next_title</a></p>';
+    $next =~ s/\$back_and_forth::next_url/$next_url/ge;
+    $next =~ s/\$back_and_forth::next_title/$next_title/ge;
   }
 
   return 1;
