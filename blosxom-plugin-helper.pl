@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-# blosxom-plugin-helper.pl v1.1.1
+# blosxom-plugin-helper.pl v1.1.2
 #
 # Copyright (c) 2005 Kyo Nagashima <kyo@hail2u.net>, http://hail2u.net/
 #
