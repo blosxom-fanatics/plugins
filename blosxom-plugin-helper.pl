@@ -1,4 +1,4 @@
-#!/usr/local/bin/perl
+#!/usr/bin/perl
 
 # blosxom-plugin-helper.pl v1.1.1
 #
@@ -8,10 +8,11 @@
 # under the same terms as Perl itself.
 
 use strict;
+use warnings;
 
 # --- Configurable variables -----------
 
-my $author = 'John Doe <john.d@example.com>, http://example.com/';
+my $author = 'John Doe E<lt>john.d@example.comE<gt>, http://example.com/';
 
 # --------------------------------------
 
