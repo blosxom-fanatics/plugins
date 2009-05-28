@@ -32,11 +32,7 @@ sub start {
 sub head {
   my ($pkg, $path, $head_ref) = @_;
 
-  if ($append) {
-    $title = qq!$blosxom::path_info_yr$title_sep!;
-  } else {
-    $title = qq!$title_sep$blosxom::path_info_yr!;
-  }
+  $title = $blosxom::path_info_yr;
 
   if ($blosxom::path_info_mo_num) {
     $title .= qq!/$blosxom::path_info_mo_num!;
@@ -44,6 +40,12 @@ sub head {
     if ($blosxom::path_info_da) {
       $title .= qq!/$blosxom::path_info_da!;
     }
+  }
+
+  if ($append) {
+    $title = qq!$title$title_sep!;
+  } else {
+    $title = qq!$title_sep$title!;
   }
 
   return 1;
