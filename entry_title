@@ -42,12 +42,12 @@ sub head {
   if (-f $file and $fh->open($file)) {
     chomp($title = <$fh>);
     $fh->close;
-  }
 
-  if ($append) {
-    $title = qq!$title$title_sep!;
-  } else {
-    $title = qq!$title_sep$title!;
+    if ($append) {
+      $title = qq!$title$title_sep!;
+    } else {
+      $title = qq!$title_sep$title!;
+    }
   }
 
   return 1;
