@@ -1,0 +1,36 @@
+# Blosxom Plugin: redirectif_noflavour
+# Author(s): motormean, Kyo Nagashima <kyo@hail2u.net>
+# Version: 2009-10-02T09:11:45+09:00
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+package redirectif_noflavour;
+
+use strict;
+
+# --- Configurable variables -----------
+
+# --- Plug-in package variables --------
+
+# --------------------------------------
+
+sub start {
+  1;
+}
+
+sub skip {
+  my $path = $blosxom::path_info;
+
+  do {
+    return 0 if -e "$blosxom::datadir/$path/story.$blosxom::flavour";
+  } while ($path =~ s/(\/*[^\/]*)$// and $1);
+
+  $path = $blosxom::path_info;
+  $path =~ s/[^.]+$/$blosxom::default_flavour/;
+  $blosxom::header->{-status} = '301 Moved Permanently';
+  $blosxom::header->{-Location} = "$blosxom::url/$path";
+  $blosxom::output = '';
+
+  return 1;
+}
+
+1;
