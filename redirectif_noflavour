@@ -1,6 +1,6 @@
 # Blosxom Plugin: redirectif_noflavour
 # Author(s): motormean, Kyo Nagashima <kyo@hail2u.net>
-# Version: 2009-10-02T09:11:45+09:00
+# Version: 2009-11-12T09:01:42+09:00
 # Blosxom Home/Docs/Licensing: http://www.blosxom.com/
 
 package redirectif_noflavour;
@@ -14,7 +14,7 @@ use strict;
 # --------------------------------------
 
 sub start {
-  1;
+  return 1;
 }
 
 sub skip {
@@ -25,7 +25,7 @@ sub skip {
   } while ($path =~ s/(\/*[^\/]*)$// and $1);
 
   $path = $blosxom::path_info;
-  $path =~ s/[^.]+$/$blosxom::default_flavour/;
+  $path =~ s/[^.]*$/$blosxom::default_flavour/;
   $blosxom::header->{-status} = '301 Moved Permanently';
   $blosxom::header->{-Location} = "$blosxom::url/$path";
   $blosxom::output = '';
