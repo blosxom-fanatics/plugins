@@ -38,7 +38,7 @@ sub filter {
   my(@files, @mtimes);
 
   my $currentpath = "$blosxom::datadir/$blosxom::path_info";
-  $currentpath =~ s/\.$blosxom::flavour$//;
+  $currentpath =~ s/\.\Q$blosxom::flavour\E$//;
 
   foreach (keys %$files_ref) {
     push @files, $_ if /^\Q$currentpath\E/;

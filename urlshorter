@@ -63,7 +63,7 @@ sub head {
   my($pkg, $path, $head_ref) = @_;
 
   # generate shortened URL only if individual page
-  if ($path =~ s/\.$blosxom::flavour$/\.$blosxom::file_extension/) {
+  if ($path =~ s/\.\Q$blosxom::flavour\E$/\.$blosxom::file_extension/) {
     my %path2idx = map { $file_info[$_] => $_ } 0..$#file_info;
     my $index = $path2idx{"$blosxom::datadir/$path"};
     # create link element for specifying shotened URL

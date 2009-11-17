@@ -26,7 +26,7 @@ use FileHandle;
 my $fh = new FileHandle;
 
 sub start {
-  if ($blosxom::path_info !~ /\.$blosxom::flavour$/) {
+  if ($blosxom::path_info !~ /\.\Q$blosxom::flavour\E$/) {
     return 0;
   }
 
@@ -36,7 +36,7 @@ sub start {
 sub head {
   my($pkg, $path, $head_ref) = @_;
 
-  $path =~ s/\.$blosxom::flavour/\.$blosxom::file_extension/;
+  $path =~ s/\.\Q$blosxom::flavour\E/\.$blosxom::file_extension/;
   my $file = "$blosxom::datadir/$path";
 
   if (-f $file and $fh->open($file)) {
