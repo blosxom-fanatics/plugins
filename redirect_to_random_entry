@@ -1,0 +1,133 @@
+# Blosxom Plugin: redirect_to_random_entry
+# Author(s): Kyo Nagashima E<lt>kyo@hail2u.netE<gt>, http://hail2u.net/
+# Version: 2011-01-12
+# Documentation: See the bottom of this file or type: perldoc redirect_to_random_entry
+
+package redirect_to_random_entry;
+
+use strict;
+
+# --- Configurable variables -----------
+
+# --- Plug-in package variables --------
+
+my $path;
+
+# --------------------------------------
+
+use CGI qw(param);
+
+sub start {
+  if (param('random') > 0) {
+    return 1;
+  }
+
+  return 0;
+}
+
+sub filter {
+  my($pkg, $files_ref) = @_;
+
+  my @files = keys %$files_ref;
+  $path = $files[int(rand(@files))];
+  $path =~ s/^$blosxom::datadir//;
+  $path =~ s/\..+?$/.$blosxom::default_flavour/;
+  $path =~ s!(^/*)!!;
+
+  return 1;
+}
+
+sub skip {
+  $blosxom::header->{-status} = '302 Found';
+  $blosxom::header->{-Location} = "$blosxom::url/$path";
+  $blosxom::output = '';
+
+  return 1;
+}
+
+1;
+
+__END__
+
+=head1 NAME
+
+Blosxom Plug-in: redirect_to_random_entry
+
+=head1 SYNOPSIS
+
+Redirect to random entry if visitors access your blosxom with "random=1"
+parameter.
+
+=head1 VERSION
+
+2011-01-12
+
+=head1 AUTHOR
+
+Kyo Nagashima E<lt>kyo@hail2u.netE<gt>, http://hail2u.net/
+
+=head1 INSTALLATION
+
+=over
+
+=item 1 Drop redirect_to_random_entry into your plugins directory.
+
+=item 2 Add a link to any flavour like this:
+
+    <p><a href="$blosxom::url/?random=1">Display random entry</a></p>
+
+=back
+
+=head1 SEE ALSO
+
+=over
+
+=item Blosxom Home/Docs/Licensing
+
+http://www.blosxom.com/
+
+=item Blosxom Plugin Docs
+
+http://www.blosxom.com/documentation/users/plugins.html
+
+=back
+
+=head1 BUGS
+
+Address bug reports and comments to:
+
+=over
+
+=item blosxom ML
+
+http://groups.yahoo.com/group/blosxom/
+
+=item all about blosxom ML
+
+http://www.freeml.com/info/blosxom@freeml.com
+
+=back
+
+all about blosxom ML: http://www.freeml.com/info/blosxom@freeml.com
+
+=head1 LICENSE
+
+Copyright 2011, Kyo Nagashima E<lt>kyo@hail2u.netE<gt>, http://hail2u.net/
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the "Software"),
+to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
