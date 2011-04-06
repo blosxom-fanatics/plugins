@@ -1,0 +1,99 @@
+# Blosxom Plugin: feed
+# Author(s): Kyo Nagashima <kyo@hail2u.net>
+# Version: 2011-04-06
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+package feed;
+
+use strict;
+use vars qw($name $url $email $rights $published $published_w3cdtf $updated $updated_w3cdtf $excerpt $encoded_body);
+
+# --- Configurable variables -----------
+
+$name   = 'John Doe';
+$url    = 'http://www.example.com/';
+$email  = 'john.doe@example.com';
+$rights = 'Copyright (c) 2011, John Doe';
+
+my $tzd_rfc = "+0900";
+my $tzd_w3cdtf = "+09:00";
+
+# --- Plug-in package variables --------
+
+my $updated_placeholder = '{{{feed::updated}}}';
+my $updated_w3cdtf_placeholder = '{{{feed::updated_w3cdtf}}}';
+my @mtimes;
+
+# --------------------------------------
+
+use File::stat;
+
+sub start {
+  return 1;
+}
+
+sub story {
+  my($pkg, $path, $fn, $story_ref, $title_ref, $body_ref) = @_;
+
+  my $file = "$blosxom::datadir$path/$fn.$blosxom::file_extension";
+
+  $published = &format_time_rfc($blosxom::files{$file});
+  $published_w3cdtf = &format_time_w3cdtf($blosxom::files{$file});
+
+  my $mtime = stat($file)->mtime;
+  push @mtimes, $mtime;
+  $updated = format_time_rfc($mtime);
+  $updated_w3cdtf = format_time_w3cdtf($mtime);
+
+  $excerpt = $$body_ref;
+  $excerpt =~ tr!\x0D\x0A!!d;
+  $excerpt =~ s!^.*?<p>(.*?)</p>.*?$!$1!;
+  $excerpt =~ s!<.*?>!!g;
+
+  $encoded_body = $$body_ref;
+
+  return 1;
+}
+
+sub foot {
+  @mtimes = sort { $b <=> $a } @mtimes;
+  my $mtime = $mtimes[0];
+  $updated = format_time_rfc($mtime);
+  $updated_w3cdtf = format_time_w3cdtf($mtime);
+  $blosxom::output =~ s/$updated_placeholder/$updated/m;
+  $blosxom::output =~ s/$updated_w3cdtf_placeholder/$updated_w3cdtf/m;
+}
+
+sub format_time_rfc {
+  my $time = shift;
+
+  my($ss, $nn, $hh, $dd, $mm, $yy, $ww) = localtime($time);
+  $yy = $yy + 1900;
+  $dd = sprintf "%02d", $dd;
+  $hh = sprintf "%02d", $hh;
+  $nn = sprintf "%02d", $nn;
+  $ss = sprintf "%02d", $ss;
+  my @months = qw(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec);
+  my @wdays  = qw(Sun Mon Tue Wed Thu Fri Sat);
+  $time = "$wdays[$ww], $dd $months[$mm] $yy $hh:$nn:$ss $tzd_rfc";
+
+  return $time;
+}
+
+sub format_time_w3cdtf {
+  my $time = shift;
+
+  my($ss, $nn, $hh, $dd, $mm, $yy, $ww) = localtime($time);
+  $yy = $yy + 1900;
+  $mm = sprintf "%02d", ($mm + 1);
+  $dd = sprintf "%02d", $dd;
+  $hh = sprintf "%02d", $hh;
+  $nn = sprintf "%02d", $nn;
+  $ss = sprintf "%02d", $ss;
+  my $T = "T";
+  $time = "$yy-$mm-$dd$T$hh:$nn:$ss$tzd_w3cdtf";
+
+  return $time;
+}
+
+1;
