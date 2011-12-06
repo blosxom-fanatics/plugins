@@ -1,0 +1,117 @@
+# Blosxom Plugin: ogp
+# Author(s): Kyo Nagashima <kyo@hail2u.net>
+# Version: 2011-12-06
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+package ogp;
+
+use strict;
+
+# --- Configurable variables -----------
+
+# Default metadata
+my $title       = "$blosxom::blog_title";
+my $type        = "blog";
+my $image_url   = "http://example.com/path/to/logo.png";
+my $url         = "$blosxom::url/";
+my $description = "$blosxom::blog_description";
+my $locale      = "ja_JP";
+my $site_name   = "Example.com";
+my $user_id     = "your facebook nickname or user_id";
+
+# Output as XHTML?
+my $as_xhtml = 0;
+
+# --- Plug-in package variables --------
+
+my $placeholder = '{{{ogp_metadata}}}';
+my $xhtml = $as_xhtml ? ' /' : '';
+my $individual = 0;
+
+# --------------------------------------
+
+sub start {
+  $individual = 1 if $blosxom::path_info =~ /\.\Q$blosxom::flavour\E$/;
+
+  return 1;
+}
+
+sub story {
+  my($pkg, $path, $filename, $story_ref, $title_ref, $body_ref) = @_;
+
+  if ($individual) {
+    ($title = $$title_ref) =~ s/<.*?>//g;
+    $type = "article";
+    $url = "$blosxom::url$path/$filename.$blosxom::default_flavour";
+    $description = $$body_ref;
+
+    if ($description =~ /<img /) {
+      $image_url = $description;
+      $image_url =~ s/^.*?<img\b.*?\bsrc="(.*?)".*?$/$1/s;
+    }
+
+    $description =~ tr!\x0D\x0A!!d;
+    $description =~ s!<.*?>!!g;
+  }
+
+  return 1;
+}
+
+sub foot {
+  my $metadata = <<"METADATA";
+<meta property="og:title" content="$title"$xhtml>
+<meta property="og:type" content="$type"$xhtml>
+<meta property="og:image" content="$image_url"$xhtml>
+<meta property="og:url" content="$url"$xhtml>
+<meta property="og:description" content="$description"$xhtml>
+<meta property="og:locale" content="$locale"$xhtml>
+<meta property="og:site_name" content="$site_name"$xhtml>
+<meta property="fb:admins" content="$user_id"$xhtml>
+METADATA
+
+  $blosxom::output =~ s/$placeholder/$metadata/m;
+
+  return 1;
+}
+
+1;
+
+__END__
+
+=head1 NAME
+
+Blosxom Plug-in: ogp
+
+=head1 SYNOPSIS
+
+provide Open Graph protocol metadata to head.flavour (mainly for html).
+
+=head1 VERSION
+
+2011-12-06
+
+=head1 AUTHOR
+
+Kyo Nagashima <kyo@hail2u.net>, http://hail2u.net/
+
+=head1 INSTALLATION
+
+Drop ogp into your plugins directory, and put a code below to head.html:
+
+{{{ogp_metadata}}}
+
+=head1 BUGS
+
+Address bug reports and comments to:
+
+=over
+
+=item GitHub issue
+
+https://github.com/hail2u/blosxom-plugins/issues
+
+=back
+
+=head1 LICENSE
+
+http://hail2u.mit-license.org/2011
