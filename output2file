@@ -48,3 +48,4 @@ sub last {
 }
 
 1;
+# vim:ft=perl

@@ -201,3 +201,4 @@ sub is_prune_dir {
 }
 
 1;
+# vim:ft=perl

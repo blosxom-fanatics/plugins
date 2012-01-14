@@ -79,3 +79,4 @@ sub getinfo {
 }
 
 1;
+# vim:ft=perl

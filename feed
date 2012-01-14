@@ -97,3 +97,4 @@ sub format_time_w3cdtf {
 }
 
 1;
+# vim:ft=perl

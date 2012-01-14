@@ -69,3 +69,4 @@ sub foot {
 }
 
 1;
+# vim:ft=perl

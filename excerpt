@@ -30,3 +30,4 @@ sub story {
 }
 
 1;
+# vim:ft=perl
