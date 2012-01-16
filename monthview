@@ -1,0 +1,170 @@
+# Blosxom Plugin: monthview
+# Author(s): Kyo Nagashima <kyo@hail2u.net>
+# Version: 2012-01-16
+# Documentation: See the bottom of this file or type: perldoc writeback
+
+package monthview;
+
+use strict;
+use vars qw($enabled);
+
+# --- Configurable variables -----------
+
+# --- Plug-in package variables --------
+
+$enabled = 0;
+my $flavour = 'monthview';
+
+# --------------------------------------
+
+sub start {
+  if (!$blosxom::path_info_mo or $blosxom::path_info_da) {
+    return 0;
+  }
+
+  $enabled = 1;
+
+  return 1;
+}
+
+sub head {
+  my($pkg, $path, $head_ref) = @_;
+
+  if (&is_flavour_exists($path, 'head', $flavour)) {
+    $$head_ref = &$blosxom::template($path, 'head', $flavour);
+
+    return 1;
+  }
+
+  return 0;
+}
+
+sub sort {
+  return sub {
+    my ($files_ref) = @_;
+
+    return sort {
+      $files_ref->{$a} <=> $files_ref->{$b}
+    } keys %$files_ref;
+  };
+}
+
+sub date {
+  my ($pkg, $path, $date_ref, $mtime, $dw, $mo, $mo_num, $da, $ti, $yr) = @_;
+
+  if (&is_flavour_exists($path, 'date', $flavour)) {
+    $$date_ref = &$blosxom::template($path, 'date', $flavour);
+
+    return 1;
+  }
+
+  return 0;
+}
+
+sub story {
+  my ($pkg, $path, $fn, $story_ref, $title_ref, $body_ref) = @_;
+
+  if (&is_flavour_exists($path, 'story', $flavour)) {
+    $$story_ref = &$blosxom::template($path, 'story', $flavour);
+
+    return 1;
+  }
+
+  return 0;
+}
+
+sub foot {
+  my ($pkg, $path, $foot_ref) = @_;
+
+  if (&is_flavour_exists($path, 'foot', $flavour)) {
+    $$foot_ref = &$blosxom::template($path, 'foot', $flavour);
+
+    return 1;
+  }
+
+  return 0;
+}
+
+sub is_flavour_exists {
+  my ($path, $chunk, $flavour) = @_;
+
+  do {
+    if (-e "$blosxom::datadir/$path/$chunk.$flavour") {
+      return 1;
+    }
+  } while ($path =~ s/(\/*[^\/]*)$// and $1);
+
+  return 0;
+}
+
+1;
+
+__END__
+
+=head1 NAME
+
+Blosxom Plug-in: monthview
+
+=head1 SYNOPSIS
+
+Allows you to use alternate flavour for view by month.
+
+=head1 VERSION
+
+2012-01-16
+
+=head1 AUTHOR
+
+Kyo Nagashima E<lt>kyo@hail2u.netE<gt>, http://hail2u.net/
+
+=head1 INSTALLATION
+
+Drop monthview into your plugins directory. And create following flavours if you want:
+
+=over
+
+=item * head.monthview
+
+=item * date.monthview
+
+=item * story.monthview
+
+=item * foot.monthview
+
+=back
+
+=head2 FLAVOUR FALLBACK
+
+If blosxom can't find one of the above 'monthview' flavour, fallback to a flavour user requested. This means, if you have only 'story.monthview', blosxom renders 'http://example.com/blosxom.cgi/2012/01/index.html' with:
+
+=over
+
+=item * head.html
+
+=item * date.html
+
+=item * story.monthview
+
+=item * foot.html
+
+=back
+
+=head1 BUGS
+
+Address bug reports and comments to:
+
+=over 1
+
+=item GitHub issue
+
+https://github.com/hail2u/blosxom-plugins/issues
+
+=back
+
+=head1 LICENSE
+
+http://hail2u.mit-license.org/2012
+
+=cut
+
+# vim:ft=perl
