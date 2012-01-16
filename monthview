@@ -18,7 +18,7 @@ my $flavour = 'monthview';
 # --------------------------------------
 
 sub start {
-  if (!$blosxom::path_info_mo or $blosxom::path_info_da) {
+  if (!$blosxom::path_info_mo or $blosxom::path_info_da or ($blosxom::flavour ne $blosxom::default_flavour)) {
     return 0;
   }
 
