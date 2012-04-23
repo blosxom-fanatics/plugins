@@ -1,0 +1,153 @@
+# Blosxom Plugin: anyencoding
+# Author(s): KITAMURA Akatsuki <kits@akatuskinishisu.net>
+# Version: 2005-09-08
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+# This script is encoded in UTF-8.
+
+package anyencoding;
+use strict;
+
+# --- Configurable variables -----------
+
+# 記事ファイルの文字コード
+my $data_charset = 'UTF-8';
+
+# --- Plug-in package variables --------
+
+use vars qw($charset);
+
+# --------------------------------------
+
+sub start {
+	$charset = $data_charset;
+	1;
+}
+
+sub head {
+	# Content-Typeを取得
+	my $content_type;
+	if ($blosxom::static_or_dynamic eq 'dynamic') {
+		$content_type = $blosxom::header->{-type};
+	} else {
+		$content_type = &$blosxom::template($blosxsom::path_info, 'content_type', $blosxom::flavour);
+	}
+
+	# Content-Typeからcharsetを取得
+	if ( $content_type =~ m{charset=([\w\d-]+)} ) {
+		$charset = $1;
+	}
+}
+
+sub last {
+	# 元の文字コードと同じなら何もせず復帰
+	return 1 if (uc($charset) eq uc($data_charset));
+
+	# 文字コード変換
+	require Encode;
+	$blosxom::output = Encode::encode(
+		$charset,
+		Encode::decode($data_charset, $blosxom::output),
+		Encode::FB_HTMLCREF()
+	);
+	1;
+}
+
+1;
+
+__END__
+
+=head1 NAME
+
+Blosxom Plug-in: anyencoding
+
+=head1 SYNOPSIS
+
+目的: content_typeテンプレートに記述したcharsetパラメタに合わせて、
+出力される記事の文字コードを変更するためのプラグインです。
+
+=head1 REQUIREMENT
+
+このプラグインはEncodeモジュールを必要とします。
+
+=head1 INSTALLATION
+
+このプラグインファイルをプラグインディレクトリ($plugin_dir)に
+置いて下さい。
+
+=head1 CONFIGURATION
+
+$data_charsetには記事ファイルで使用している文字コード名を
+設定して下さい。
+
+content_typeテンプレートには、出力する文字コード名を
+charsetパラメタとして記述して下さい。例:
+
+  text/html; charset=Shift_JIS
+
+  text/plain; charset=EUC-JP
+
+  application/xml; charset=UTF-8
+
+テンプレート用の変数として、$anyencoding::charsetが使用できます。
+これはcontent_typeテンプレートから取得した文字コード名です。
+文字コード指定のmeta要素やXML宣言でこの変数を使うことにより、
+headテンプレート等を変更せず、content_typeテンプレートを変更するだけで
+出力文字コードを変更できます。
+
+=head1 VERSION
+
+2005-09-08
+
+=head1 VERSION HISTORY
+
+=head2 2005-09-08
+
+Encode::from_to の代わりに Encode::decode と Encode::encode を
+使うよう変更しました。
+
+=head2 2005-04-20
+
+http://www.akatsukinishisu.net/itazuragaki/data/blosxom/anyencoding/anyencoding-2005-04-20
+
+content_typeテンプレートから取得した文字コード名を
+$anyencoding::charset という変数に設定し、headテンプレート等で
+利用できるようにしました。
+
+=head2 2004-09-29
+
+http://www.akatsukinishisu.net/itazuragaki/data/blosxom/anyencoding/anyencoding-2004-09-29
+
+=head1 AUTHOR
+
+北村曉 (KITAMURA Akatsuki)
+<kits@akatsukinishisu.net>,
+http://www.akatsukinishisu.net/
+
+=head1 SEE ALSO
+
+Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+Blosxom Plugin Docs: http://www.blosxom.com/plugins/
+
+=head1 LICENSE
+
+This Blosxom Plug-in Copyright (c) 2004, KITAMURA Akatsuki
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the "Software"),
+to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.

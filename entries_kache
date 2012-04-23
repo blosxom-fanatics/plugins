@@ -1,0 +1,414 @@
+# Blosxom Plugin: entries_kache
+# Modifier: KITAMURA Akatsuki <kits@akatsukinishisu.net>
+# Version: 2005-02-01
+# Based on entries_cache by Fletcher T. Penney
+# Based on entries_index by Rael Dornfest
+
+# This script is encoded in UTF-8.
+
+package entries_kache;
+use strict;
+
+# --- Configurable variables -----------
+
+my $delay = 60;
+	# 何分ごとに再インデックスを実行するかを設定します。
+	# 0にすると毎回インデックスを行います。
+	# URLに ?reindex=y をつけることにより、
+	# 強制的に再インデックスを実行します。
+
+my $indexname        = "$blosxom::plugin_state_dir/entries_kache.index";
+my $others_indexname = "$blosxom::plugin_state_dir/entries_kache.others";
+	# インデックスファイルのファイル名を設定します。
+
+my $use_date_tags = 1;
+	# 1に設定すると記事中のdateタグを読み取ります。
+	# dateタグを使わない場合は0に設定します。
+
+my $update_meta_date = 1;
+	# 記事にdateタグが無ければ追加します。
+	# CGIからの記事ファイル書き換えが可能である必要があります。
+	# 記事の改行にはUNIXの改行(LF)を使って下さい。
+	# dateタグを追加しない場合は0に設定します。
+
+my $meta_timestamp = "meta-creation_timestamp:";
+	# timestampタグ用のmetaキーワードを設定します。
+	# timestampタグは機械向けの日付書式です。
+	# (1970年1月1日0時0分0秒(GMT)からの秒数です)
+
+my $meta_date = "meta-creation_date:";
+	# dateタグ用のmetaキーワードを設定します。
+	# dateタグはW3Cの日付時刻書式(W3CDTF)を使っています。
+	# http://www.w3.org/TR/NOTE-datetime
+
+my $strip_meta_dates = 1;
+	# 1に設定すると、metaタグを記事から取り除きます。
+	# 取り除かない場合は0に設定します。
+	# metaプラグインを使用している場合は0に設定します。
+
+my $debug = 0;
+	# 1に設定すると、デバッグ用メッセージをサーバのエラーログに出力します。
+	# 出力しない場合は0に設定します。
+
+# --- Plug-in package variables --------
+
+my $reindex;
+
+# --------------------------------------
+
+use File::stat;
+use File::Find;
+use CGI qw/:standard/;
+use Time::Local;
+
+sub start {
+	# Force a reindex
+	$reindex = (CGI::param('reindex')) ? 1 : 0;
+	return 1;
+}
+
+sub entries {
+	return sub {
+		my $time = time;
+		my(%files, %indexes, %others);
+
+		# インデックスファイルの読み込み
+		if (open CACHE, $indexname) {
+			while (my $line = <CACHE>) {
+				# entries_indexのインデックスファイルにも対応
+				if ($line =~ /\s*'?(.*?)'?\s*=>\s*(\d*),?/) {
+					$files{$1} = $2;
+				}
+			}
+			close CACHE;
+			# インデックスファイルの更新時刻を確認
+			$reindex = 1 if ( stat($indexname)->mtime < ($time - $delay * 60) );
+		} else {
+			# ファイルがopenできなければ、再インデックスを実行
+			$reindex = 1;
+		}
+
+		# othersインデックスファイルの読み込み
+		if (open CACHE, $others_indexname) {
+			while (my $line = <CACHE>) {
+				if ($line =~ /\s*'?(.*)'?\s*=>\s*(.*),?/) {
+					$others{$1} = $2;
+				}
+			}
+			close CACHE;
+			# インデックスファイルの更新時刻を確認
+			$reindex = 1 if ( stat($others_indexname)->mtime < ($time - $delay*60) );
+		} else {
+			# インデックスファイルがopenできなければ、再インデックスを実行
+			$reindex = 1;
+		}
+
+		# staticであれば再インデックスを実行
+		$reindex = 1 if ($blosxom::static_or_dynamic eq "static");
+
+		# $reindexが0なら再インデックスは行わない
+		$reindex or return (\%files, \%indexes, \%others);
+		$debug and warn "entries_kache: file scanning...\n";
+
+		# ここで一旦$reindexを0に戻す
+		$reindex = 0;
+
+		# インデックスされた記事ファイルが通常ファイルで無いならば、
+		# 再インデックスを実行
+		foreach my $file (keys %files) {
+			-f $file and next;
+			$reindex++;
+			delete $files{$file};
+		}
+		foreach my $other (keys %others) {
+			-f $other and next;
+			$reindex++;
+			delete $others{$other};
+		}
+
+		# 記事ファイルの更新時刻をスキャン
+		find(
+			sub {
+				my $d;
+				my $curr_depth = $File::Find::dir =~ tr[/][];
+
+				# %othersのサポートを追加
+				if (
+					$File::Find::name =~ m{^$blosxom::datadir/(?:(.*)/)?(.+)\.$blosxom::file_extension$}
+					&& ($2 ne 'index') && ($2 !~ /^\./) && (-r $File::Find::name)
+				) {
+					# to show or not to show future entries
+					(
+						$blosxom::show_future_entries
+						or stat($File::Find::name)->mtime <= time
+					) 
+					and ( $files{$File::Find::name} || ++$reindex )
+					and (
+						$files{$File::Find::name} = extract_date($File::Find::name, $files{$File::Find::name})
+					)
+
+					# Static
+					and (
+						CGI::param('-all')
+						or !-f "$blosxom::static_dir/$1/index." . $blosxom::static_flavours[0]
+						#or stat("$blosxom::static_dir/$1/index." . $blosxom::static_flavours[0])->mtime < stat($File::Find::name)->mtime
+						# Trying to fix for static mode
+						or stat("$blosxom::static_dir/$1/index." . $blosxom::static_flavours[0])->mtime < $files{$File::Find::name}
+					)
+					and $indexes{$1} = 1
+					and $d = join('/', (blosxom::nice_date($files{$File::Find::name}))[5,2,3])
+					and $indexes{$d} = $d
+					and $blosxom::static_entries and $indexes{ ($1 ? "$1/" : '') . "$2.$blosxom::file_extension" } = 1;
+				} else {
+					(!-d $File::Find::name && -r $File::Find::name) and $others{$File::Find::name} = stat($File::Find::name)->mtime
+				}
+			}, $blosxom::datadir
+		);
+
+		# $reindexが0ならインデックスファイルはそのまま(更新時刻だけ変更)
+		unless ($reindex) {
+			$debug and warn "entries_kache: No update index file\n";
+			utime($time, $time, $indexname);
+			utime($time, $time, $others_indexname);
+			return (\%files, \%indexes, \%others);
+		}
+
+		# 再構成されたインデックスをファイルへ出力
+		$debug and warn "entries_kache: Output index file\n";
+		if (open CACHE, ">$indexname") {
+			foreach (sort keys %files) {
+				print CACHE "$_=>$files{$_}\n";
+			}
+			close CACHE;
+		} else {
+			warn "entries_kache: couldn't > $indexname: $!\n";
+		}
+
+		if (open CACHE, ">$others_indexname") {
+			foreach (sort keys %others) {
+				print CACHE "$_=>$others{$_}\n";
+			}
+			close CACHE;
+		} else {
+			warn "entries_kache: couldn't > $others_indexname: $!\n";
+		}
+		return (\%files, \%indexes, \%others);
+	}
+}
+
+sub extract_date {
+	my ($file, $indexed_date) = @_;
+
+	# $indexed_dateが偽ならファイルから更新時刻を取得
+	defined($indexed_date) or $indexed_date = stat($file)->mtime;
+	# dateタグを使わないならそのまま復帰
+	$use_date_tags or return $indexed_date;
+
+	$debug and warn <<EOT;
+entries_kache: Checking $file for meta-tag
+	Comparing to $indexed_date
+EOT
+
+	open (FILE, $file) or return $indexed_date;
+	eval { flock(FILE, 1) };
+	my $line = <FILE>;      # Read first line (ie the title)
+	my $new_story = $line;
+
+	# 記事ファイルを読み取る
+	while ($line = <FILE>) {
+		if ($line =~ /^$meta_timestamp\s*(\d+)/) {
+			# timestampタグがあればそれを使う
+			close FILE;
+			my $result = $1;
+			$debug and warn "entries_kache: Found meta_timestamp $result for $file\n";
+			return $result;
+		}
+
+		if ($line =~ /^$meta_date\s*(.*)/) {
+			my $result = parsedate($1);
+			$debug and warn "entries_kache: Found meta-date $1 ($result) for $file\n";
+			if ($indexed_date != $result) {
+				# キャッシュの日付をdateタグの日付で置き換える
+				$debug and warn "entries_kache: Indexed date is replacing...\n";
+				$reindex++;
+			}
+			if (defined($result)) {
+				close FILE;
+				return $result;
+			} else {
+				# 読めないdateタグは跳ばす($new_storyに含めない)
+				next;
+			}
+		}
+
+		# metaで始まらない行があったらwhileループを抜ける
+		last if ( $line !~ /^meta.*?:/i );
+
+		$new_story .= $line;
+	}
+
+	# dateタグを追加しないならそのまま復帰
+	if ($update_meta_date == 0) {
+		close FILE;
+		return $indexed_date;
+	}
+
+	# 記事がUNIXの改行のみで書かれているかのチェック
+	if (($line =~ /\x0D/) || ($new_story =~ /\x0D/)) {
+		warn "entries_kache: File $file has non-UNIX line endings; cannot update metatags...\n";
+		close FILE;
+		return $indexed_date;
+	}
+
+	# dateタグを追加する
+	$debug and warn "entries_kache: Updating meta-tag for $file\n";
+	my $datestr = datestring($indexed_date);
+	$debug and warn "entries_kache: Adding meta-tag to $file, using $meta_date $datestr\n";
+	$new_story .= "$meta_date $datestr\n\n";
+
+	# 行が空でなければ$new_storyに追加
+	if ($line !~ /^\s*$/) {
+		$new_story .= $line;
+	}
+
+	# 記事の残りを読み込む
+	$new_story .= join("", <FILE>);
+	close FILE;
+
+	# dateタグを追加した記事を出力
+	if (open FILE, ">$file"){
+		eval { flock(FILE, 2) };
+		print FILE $new_story;
+		close FILE;
+	} else {
+		warn "entries_kache: Unable to update date meta-tag on $file\n";
+	}
+	return $indexed_date;
+}
+
+sub parsedate {
+	my $str = $_[0];
+
+	# 正規表現は「Perlメモ/W3C形式の日時の解析」を参考にしました。
+	# http://digit.que.ne.jp/work/index.cgi?Perl%A5%E1%A5%E2%2FW3C%B7%C1%BC%B0%A4%CE%C6%FC%BB%FE%A4%CE%B2%F2%C0%CF
+	$str =~ m{
+		^(\d{4})(?:                 # $1 : 年
+		-(\d\d)(?:                  # $2 : 月
+		-(\d\d)(?:                  # $3 : 日
+		T(\d\d)                     # $4 : 時
+		:(\d\d)(?:                  # $5 : 分
+		:(\d\d)(?:                  # $6 : 秒
+		\.(\d+) )?)?                # $7 : 小数秒
+		( Z|([+-])(\d\d):(\d\d) )?  # $8 ($9, $10, $11) : 時差
+		)?)?)?
+	}x or return undef;
+	my ($y, $mo, $d, $h, $mi, $s, $z);
+	$y  = $1 - 1900;
+	$mo = ($2 || 1) - 1;
+	$d  = $3 || 1;
+	$h  = $4 || 0;
+	$mi = $5 || 0;
+	$s  = $6 || 0;
+	if (!$8) {
+		$z = 0 - timelocal(0, 0, 0, 1, 0, 70);
+	} elsif ($8 eq 'Z') {
+		$z = 0;
+	} else {
+		$z = ($10 * 3600 + $11 * 60);
+		$9 eq '-' and $z *= -1;
+	}
+	my $gmt;
+	eval { $gmt = timegm($s, $mi, $h, $d, $mo, $y) };
+	if ($@) {
+		warn $@;
+		return undef;
+	} else {
+		return $gmt - $z;
+	}
+}
+
+sub datestring {
+	my $time = $_[0];
+	my $z = 0 - timelocal(0, 0, 0, 1, 0, 70);
+	my $zh = $z / 3600;
+	my $zm = (abs($z) % 3600) / 60;
+	# $zh, $zmの小数部は、後のsprintfにより切り捨てられる。
+	my ($s, $mi, $h, $d, $mo, $y) = localtime($time);
+	$y += 1900;
+	$mo += 1;
+	return sprintf(
+		"%04d-%02d-%02dT%02d:%02d:%02d%+03d:%02d",
+		 $y,  $mo, $d,  $h,  $mi, $s, $zh,  $zm
+	);
+}
+
+
+sub story {
+	$strip_meta_dates or return 1;
+	my $body_ref = $_[5];
+	# timestampタグ、dateタグを削除
+	$$body_ref =~ s/^$meta_timestamp.*//g;
+	$$body_ref =~ s/^$meta_date.*//g;
+	return 1;
+}
+
+1;
+
+__END__
+
+=head1 NAME
+
+Blosxom Plug-in: entries_kache
+
+=head1 SYNOPSIS
+
+Fletcher T. Penney氏のentries_cacheを改造したものです。
+
+無保証です。
+
+=head1 VERSION
+
+2005-01-29
+
+=head1 AUTHOR
+
+北村曉 (KITAMURA Akatsuki)
+<kits@akatsukinishisu.net>, http://www.akatsukinishisu.net/
+
+based on original code by:
+Fletcher T. Penney http://fletcher.freeshell.org/
+
+based on original code by:
+Rael Dornfest  http://www.raelity.org/
+
+=head1 SEE ALSO
+
+Blosxom Home/Docs/Licensing: http://www.raelity.org/apps/blosxom/
+
+Blosxom Plugin Docs: http://www.raelity.org/apps/blosxom/plugin.shtml
+
+entries_cache: http://fletcher.freeshell.org/computers/web/blosxom/entries_cache/
+
+entries_index: http://www.blosxom.com/plugins/indexing/entries_index.htm
+
+=head1 LICENSE
+
+This Blosxom Plug-in Copyright (c) 2004, KITAMURA Akatsuki
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the "Software"),
+to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.

@@ -1,0 +1,193 @@
+# Blosxom Plugin: notfound
+# Author: KITAMURA Akatsuki <kits@akatsukinishisu.net>
+# Version: 2005-09-08
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+# This script is encoded in UTF-8.
+
+package notfound;
+use strict;
+use CGI qw(:standard);
+
+# --- Configurable variables -----------
+
+# Not Found出力を避けるフレーバーの拡張子(正規表現)
+# wikieditishで記事を新規追加する場合などで設定
+my $flavour_re = '^wikieditish$';
+
+# --- Plug-in package variables --------
+
+use vars qw($url $signature);
+my $stories;
+
+# --------------------------------------
+
+sub start {
+	return 0 if ($blosxom::static_or_dynamic eq 'static');
+	return 0 if ($flavour_re && $blosxom::flavour =~ /$flavour_re/o);
+	$stories = 0;
+	1;
+}
+
+sub filter {
+	return 1 unless ($blosxom::path_info);
+	return 1 if ($blosxom::path_info =~ m{[^/]+\.[^/]+$});
+
+	# $path_infoのディレクトリ部分に一致しないファイルを除去
+	my $files_ref = $_[1];
+	my $path_dir = "$blosxom::datadir/$blosxom::path_info";
+	foreach my $f (keys %$files_ref) {
+		$f =~ m{^$path_dir/} or delete($files_ref->{$f});
+	}
+	1;
+}
+
+sub story {
+	# 記事数を数える
+	$stories += 1;
+	1;
+}
+
+sub last {
+	# 記事があるなら何もせず復帰
+	$stories and return 1;
+
+	# 記事が無かったら404 Not Foundを返す
+	$blosxom::header->{-status} = '404 Not Found';
+
+	# テンプレート用変数の設定
+	$url = url(-absolute => 1, -path => 1);
+	$signature = server_software();
+	$signature =~ s{(^\w+/[\d.]+).*$}{$1};
+	$signature .= ' Server at ' . server_name() . ' Port ' . server_port();
+
+	# テンプレート読み込み
+	while (<DATA>) {
+		last if (/^__END__$/);
+		my ($flavour, $comp, $text) = split(' ', $_, 3);
+		$text =~ s/\\n/\n/g;
+		$blosxom::template{$flavour}{$comp} = $text;
+	}
+
+	# Not foundページのContent-Type処理
+	my $content_type = &$blosxom::template($blosxom::path_info, 'content_type', 'notfound');
+	$content_type =~ s/\n.*//s;
+	$blosxom::header->{-type} = $content_type;
+
+	# Not foundページの処理
+	my $page = &$blosxom::template($blosxom::path_info, 'page', 'notfound');
+	$blosxom::output = &$blosxom::interpolate($page);
+	1;
+}
+
+1;
+
+__DATA__
+notfound content_type text/html
+notfound page <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">\n<html lang="en">\n<head>\n<title>404 Not Found</title>\n</head>\n<body>\n<h1>Not Found</h1>\n<p>The requested URL $notfound::url was not found on this server.</p>\n<hr>\n<address>$notfound::signature</address>\n</body>\n</html>\n
+__END__
+
+=head1 NAME
+
+Blosxom Plug-in: notfound
+
+=head1 SYNOPSIS
+
+目的: 記事が無い場合にHTTPステータス "404 Not Found" を
+返すためのプラグインです。
+
+=head1 INSTALLATION
+
+このプラグインファイルをプラグインディレクトリ($plugin_dir)に
+置いて下さい。
+
+=head1 CONFIGURATION
+
+記事が無くても404 Not Foundを返したくない場合、
+例えばwikieditishプラグインを使って新規記事を追加するような
+場合には、$flavour_re にNot Foundを返さなくするフレーバーの
+拡張子を、正規表現で設定して下さい。
+
+  # 拡張子 wikieditish を除外
+  my $flavour_re = '^wikieditish$';
+
+  # 拡張子 abc, def, ghi を除外
+  my $flavour_re = '^(?:abc|def|ghi)$';
+
+content_type.notfoundテンプレートファイルで、Not Foundページの
+Content-Typeを変更することができます。日本語やその他の言語の
+文字コードをNot Foundページ本文に使う場合には、charsetパラメタを
+適切に設定して下さい。例:
+
+  text/html; charset=shift_jis
+
+  text/html; charset=euc-jp
+
+  text/html; charset=utf-8
+
+また、page.notfoundテンプレートファイルで、Not Foundページの本文を
+変更することができます。このテンプレートでは以下の変数を使用できます。
+
+$notfound::url は、要求されたURLです。
+
+$notfound::signature は、サーバソフトウェア名、サーバ名、
+ポート番号からなる文字列です。
+
+=head1 VERSION
+
+2005-09-08
+
+=head1 VERSION HISTORY
+
+=head2 2005-09-08
+
+URLのカテゴリ指定で、前方部分一致するだけでも記事を表示してしまう
+問題に対処しました(filterサブルーチンを追加)。
+
+=head2 2005-04-19
+
+http://www.akatsukinishisu.net/itazuragaki/data/blosxom/notfound/notfound-2005-04-19
+
+Not Foundページをテンプレートファイルで変更可能にしました。
+
+=head2 2004-11-21
+
+http://www.akatsukinishisu.net/itazuragaki/data/blosxom/notfound/notfound-2004-11-21
+
+
+=head1 AUTHOR
+
+北村曉 (KITAMURA Akatsuki)
+<kits@akatsukinishisu.net>,
+http://www.akatsukinishisu.net/
+
+=head1 SEE ALSO
+
+notfound plugin:
+http://www.akatsukinishisu.net/itazuragaki/blosxom/notfound.html
+
+Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+Blosxom Plugin Docs: http://www.blosxom.com/plugins/
+
+=head1 LICENSE
+
+This Blosxom Plug-in Copyright (c) 2004-2005, KITAMURA Akatsuki
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the "Software"),
+to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
