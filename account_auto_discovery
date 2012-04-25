@@ -1,0 +1,55 @@
+#!/usr/bin/perl
+# Blosxom Plugin: account auto-discovery
+# Author: Gosuke Miyashita <miya@mizzy.org>
+# Version: 2005-08-11
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+package account_auto_discovery;
+
+use strict;
+use vars qw($rdf);
+
+# --- Configurable variables -----------
+my $is_xhtml = 1;
+my @accounts = (
+		{
+		    account_name => "gosukenator",
+		    account_service_homepage => "http://www.hatena.ne.jp/",
+		},
+		#{
+		#    account_name => "xxxxx",
+		#    account_service_homepage => "http://www.xxx.ne.jp/",
+		#},
+		);
+
+sub start {
+    return 1;
+}
+
+sub head {
+    my $permalink = "http://" . $ENV{'HTTP_HOST'} . $ENV{'REQUEST_URI'};
+    
+    foreach (@accounts){
+	$rdf .= << "EOS";
+@{[ $is_xhtml ? '' : '<!--' ]}
+<rdf:RDF
+  xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+  xmlns:foaf="http://xmlns.com/foaf/0.1/">
+  <rdf:Description rdf:about="$permalink">
+    <foaf:maker rdf:parseType="Resource">
+      <foaf:holdsAccount>
+        <foaf:OnlineAccount foaf:accountName="$_->{account_name}">
+          <foaf:accountServiceHomepage rdf:resource="$_->{account_service_homepage}" />
+        </foaf:OnlineAccount>
+      </foaf:holdsAccount>
+    </foaf:maker>
+  </rdf:Description>
+</rdf:RDF>
+@{[ $is_xhtml ? '' : '-->' ]}
+EOS
+}
+
+    return 1;
+}
+
+1;

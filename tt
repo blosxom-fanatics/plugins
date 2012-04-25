@@ -1,0 +1,86 @@
+#!/usr/bin/perl
+# Blosxom Plugin: tt
+# Author: Gosuke Miyashita <miya@mizzy.org>
+# Version: 2005-05-03
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+package tt;
+
+use Template;
+use Template::Parser;
+use strict;
+
+sub start {
+    return 1;
+}
+
+sub interpolate {
+    return sub {
+	my $template = shift;
+	
+	## act same as default interpolate routine.
+	package blosxom;
+	$template =~ s/(\$\w+(?:::)?\w*)/"defined $1 ? $1 : ''"/gee;
+	
+	## tt interpolate routine.
+	package tt;
+	my $tt = Template->new;
+	my $vars;
+
+	my @params = parse($template);
+	foreach my $param (@params){
+	    my ($plugin, $var) = split(/\./, $param);
+	    if($var){
+		$vars->{$plugin}->{$var} = eval "\$${plugin}::${var}";
+	    } else {
+		$vars->{$plugin} = eval "\$blosxom::${plugin}";
+	    }
+	}
+	
+	my $output;
+	$tt->process(\$template, $vars, \$output);
+	return $output;
+    };
+}
+
+sub parse {
+    my $text = shift;
+    my $parser = Template::Parser->new;
+    my $tokens = $parser->tokenise_directive($text);
+    
+    my (@params, $param, $flag, $foreach);
+    for(my $i; $i < $#{@$tokens}; $i++){
+	my $token = $tokens->[$i];
+	
+	## detect begining or end of tt directive and compose tt params array.
+	if($token =~ /%$/){
+	    $flag = 1;
+        } elsif ($token =~ /%\]/){
+	    if($param){
+		push(@params, $param);
+		$param = '';
+	    }
+	    $flag = 0;
+	} elsif ($token =~ /FOREACH/){
+	    $flag = 0;
+	    $foreach = 1;
+	} elsif ($token =~ /ASSIGN/ and $foreach){
+	    $flag = 1;
+	    $foreach = 0;
+	}
+	
+	## compose tt param.
+	if($flag){
+	    if($token eq 'IDENT'){
+		$i++;
+		$param .= $tokens->[$i];
+	    } elsif($token eq 'DOT' and $param){
+		$param .= '.';
+	    }
+	}
+    }
+
+    return @params;
+}
+
+1;

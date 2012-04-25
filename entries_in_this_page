@@ -1,0 +1,25 @@
+#!/usr/bin/perl
+# Blosxom Plugin: entries_in_this_page
+# Author: Gosuke Miyashita <miya@mizzy.org>
+# Version: 2005-05-03
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+package entries_in_this_page;
+
+use strict;
+use vars qw($entries);
+
+sub start {
+    return 1;
+}
+
+sub story {
+    my($pkg, $path, $fn, $story_ref, $title_ref, $body_ref) = @_;
+    push(@$entries, { title => $$title_ref,
+		      path => $path,
+		      fn => $fn,
+		      }
+	 );
+}
+
+1;

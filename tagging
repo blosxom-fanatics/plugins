@@ -1,0 +1,204 @@
+#!/usr/bin/perl
+# Blosxom Plugin: tagging
+# Author: Gosuke Miyashita <miya@mizzy.org>
+# Version: 2006-04-02
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+package tagging;
+
+use strict;
+use CGI qw(param url);
+use vars qw($list $current_tag $find_tag $tags_in_this $tags_in_this_array $related_tags);
+use Storable qw(store retrieve);
+use Jcode;
+
+## --- configurable variables ---
+## What prefix should I expect prepended to each meta tag?
+my $meta_prefix = 'meta-';
+## character set for converting xmlhttprequest query
+my $charset = "euc";
+## cache file of mapping tags to entry files
+my $tags_to_files_file = "$blosxom::plugin_state_dir/tagging_tags_to_files";
+## cache file of mapping entry files to tags
+my $files_to_tags_file = "$blosxom::plugin_state_dir/tagging_files_to_tags";
+## cache of tags list
+my $tags_list_file = "$blosxom::plugin_state_dir/tagging_tags_list";
+## cache of tags list per category
+my $tags_list_per_category_file = "$blosxom::plugin_state_dir/tagging_tags_list_per_category";
+
+
+## read caches into hash ref
+my ($tags_to_files, $files_to_tags, $tags_list, $tags_list_per_category);
+eval { $tags_to_files = retrieve($tags_to_files_file); };
+eval { $files_to_tags = retrieve($files_to_tags_file); };
+eval { $tags_list = retrieve($tags_list_file); };
+eval { $tags_list_per_category = retrieve($tags_list_per_category_file); };
+
+
+sub start {
+    ## create tags list
+    my $url = url(-path_info => 1);
+    $find_tag = Jcode->new(param('find_tag'))->$charset;
+
+
+    $list = "<ul>\n";
+    if(!$blosxom::path_info_yr and $blosxom::path_info){
+	my $path = $blosxom::path_info;
+	#if($path =~ m|(.*?)/?\w+\.\w+$|){
+        if($path =~ m|(.*?)/?[\w\-]+\.[\w\-]+$|){
+	    $path = $1;
+	}
+
+	my %tags;
+	foreach my $category (keys %$tags_list_per_category){
+	    if($category =~ /$path/){
+		foreach my $tag (keys %{$tags_list_per_category->{$category}}){
+		    if(($find_tag and $tag =~ /^$find_tag/i) or !$find_tag){
+			$tags{$tag} += $tags_list_per_category->{$category}->{$tag};
+		    }
+		}
+	    }
+	}
+
+	foreach my $tag (sort keys %tags){
+	    my $encoded_tag = $tag;
+	    $encoded_tag =~ s/(\W)/sprintf("%%%02X", ord($1))/ego;
+	    $list .= "<li><a href='$url?tag=$encoded_tag'>$tag</a> ($tags{$tag})</li>\n";
+	}
+    }
+    else {
+	foreach my $tag (sort keys %$tags_list){
+	    if(($find_tag and $tag =~ /^$find_tag/i) or !$find_tag){
+		my $encoded_tag = $tag;
+		$encoded_tag =~ s/(\W)/sprintf("%%%02X", ord($1))/ego;
+		$list .= "<li><a href='$url?tag=$encoded_tag'>$tag</a> ($tags_list->{$tag})</li>\n";
+	    }
+	}
+    }
+    $list .= "</ul>\n";
+
+
+    ## return current tags;
+    $current_tag = param('tag');
+
+    return 1;
+}
+
+sub filter {
+    my($pkg, $files) = @_;
+
+    ## racache tags
+    if(param('recache_tags') or !$tags_to_files or !$files_to_tags or !$tags_list or !$tags_list_per_category){
+	## clear hash refs
+	($tags_to_files, $files_to_tags, $tags_list, $tags_list_per_category) = ({}, {}, {}, {});
+	## process each file
+	foreach (sort keys %$files){
+	    my($category, $file_tmp) = m!(.*)/(.*)!;
+	    $category =~ s/$blosxom::datadir//;
+	    $category =~ s!/!!;
+
+	    my $file = $_;
+	    open(IN, $file);
+	    my @lines = <IN>;
+	    close(IN);
+	    my $in_header = 1;
+	    ## process each line of a file and fine meta-tags
+	    foreach my $line (@lines){
+		$line =~ /^\s*$/ and $in_header = 0 and next;
+		if($in_header){
+		    ## get tags
+		    my ($key, $value) = $line =~ m!^$meta_prefix(.+?):\s*(.+)$!;
+		    if($key eq 'tags'){
+			my @tags = split(/,/, $value);
+			## convert characters of tags to small capital and remove heading and trailing spaces
+			map { $_ = lc $_; $_ =~ s/^\s*//; $_ =~ s/\s*$//; } @tags;
+			## asign tags to a file
+			push @{$files_to_tags->{$file}}, @tags;
+			## asign a file to tags
+			map { push @{$tags_to_files->{$_}}, $file } @tags;
+			## count up tags in the list
+			map { $tags_list->{$_}++; } @tags;
+                        ## count up tags per category in the list
+			map { $tags_list_per_category->{$category}->{$_}++; } @tags;
+			last;
+		    }
+		}
+	    }
+	}
+	## store hash refs into files
+	store $tags_to_files, "$tags_to_files_file";
+	store $files_to_tags, "$files_to_tags_file";
+	store $tags_list, "$tags_list_file";
+	store $tags_list_per_category, "$tags_list_per_category_file";
+    }
+
+
+    ## find entries that have tags
+    if(param('tag')){
+	my @tags = split(/,/, param('tag'));
+	my ($files_have_tags, $cnt);
+
+	foreach my $tag (@tags){
+	    if(!$files_have_tags and !$cnt){
+		%$files_have_tags = map { $_ => $files->{$_} } @{$tags_to_files->{$tag}};
+	    }
+            else {
+		my $files_have_tags_tmp;
+		foreach my $file (keys %$files_have_tags){
+		    #%$files_have_tags_tmp = map { $file eq $_ and $_ => $files->{$_} } @{$tags_to_files->{$tag}};
+		    foreach (@{$tags_to_files->{$tag}}){
+			if($file eq $_){
+			    $files_have_tags_tmp->{$_} = $files->{$_};
+			}
+		    }
+		}
+		$files_have_tags = $files_have_tags_tmp;
+	    }
+	    $cnt++;
+	}
+
+	%$files = %$files_have_tags;
+
+        my %related_tags;
+        for my $file (keys %$files){
+            for my $tag (@{$files_to_tags->{$file}}){
+                if(param('tag') !~ /$tag/){
+                    $related_tags{$tag}++;
+                }
+            }
+        }
+
+        $related_tags = '<ul>';
+        for my $tag (sort keys %related_tags){
+            my $encoded_tag = $tag;
+            my $current_tag = param('tag');
+            $encoded_tag =~ s/(\W)/sprintf("%%%02X", ord($1))/ego;
+            $related_tags .= "<li><a href='$blosxom::url/?tag=$current_tag,$encoded_tag'>$tag</a> ($related_tags{$tag})</li>\n";
+        }
+        $related_tags .= '</ul>';
+    }
+
+    return 1;
+}
+
+sub story {
+    my($pkg, $path, $fn, $story_ref, $title_ref, $body_ref) = @_;
+    $tags_in_this = '';
+    my @tags;
+    map { $_ = lc $_; $_ =~ s/^\s*//; $_ =~ s/\s*$//; push(@tags, $_); } split(/,/, $meta::tags);
+    $tags_in_this_array = \@tags;
+    foreach (sort @tags) {
+	my $encoded_tag = $_;
+	$encoded_tag =~ s/(\W)/sprintf("%%%02X", ord($1))/ego;
+	$tags_in_this .= "<a href='$blosxom::url/?tag=$encoded_tag'>$_</a> ";
+    }
+}
+
+1;
+
+__END__
+
+
+=head1 NAME
+
+Blosxom Plug-in: tagging

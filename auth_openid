@@ -1,0 +1,80 @@
+#!/usr/bin/perl
+# Blosxom Plugin: auth_openid
+# Author: Gosuke Miyashita <miya@mizzy.org>
+# Version: 2005-11-08
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+package auth_openid;
+
+use strict;
+use CGI qw(:standard);
+use CGI::Session;
+use Net::OpenID::Consumer;
+use File::Cache;
+
+my $session = CGI::Session->new();
+
+sub start {
+    return 0 if $session->param('openid_url');
+
+    my $cgi = CGI->new;
+    my $csr = Net::OpenID::Consumer->new(
+					 args            => $cgi,
+					 consumer_secret => '012345',
+					 #cache           => File::Cache->new,
+					 debug           => 0,
+					 );
+    if(param('auth_openid')){
+	my $cident = $csr->claimed_identity(param('openid_url'));
+	my $curl = $cident->check_url(
+				      return_to      => "$blosxom::url/$blosxom::path_info",
+				      trust_root     => 'http://mizzy.org/',
+				      delayed_return => 1,
+				      );
+	print "Location: $curl\n\n";
+	exit;
+    }
+    
+    if(param('openid.sig')){
+	my $vident = $csr->verified_identity or die $!;
+	$session->param('openid_url', $vident->url);
+	return 0;
+    }
+
+    return 1;
+}
+
+sub story {
+    my($pkg, $path, $fn, $story_ref, $title_ref, $body_ref) = @_;
+
+    if($meta::access eq 'private'){
+	$$body_ref = << "EOS";
+	<p class="entryBody">
+	    OpenID 認証でエントリにアクセス制限をかける実験です。認証が成功すると、本来のエントリの内容を見ることができます。なぜか知らんけど、 videntity.org のアカウントではうまくいくのに、livejournal.com や typepad.com ではうまくいきません。試してみたい方は、videntity.org のアカウントでどうぞ。（livejournal.com は、事前に認証しておけばうまくいきます。）
+	</p>
+
+	<p class="entryBody">
+	videntity.org へのログインも、livejournal.com （未認証）や typepad.com のURLではうまくいかないので、俺のせいじゃないと思いたい。
+	</p>
+	<form method="post" action="">
+	    <p class="entryBody">
+	    OpenID URL:
+	    <input class="openid_url" type="text" name="openid_url" size="30" />
+	    <input type="submit" value="認証" />
+	    <input type="hidden" name="auth_openid" value="1" />
+	    </p>
+	</form>
+EOS
+    }
+}
+
+sub foot {
+    my $cookie = cookie(
+			-name   => $session->name,
+			-value  => $session->id,
+			);
+    $blosxom::header->{ -cookie } = $cookie;
+}
+
+
+1;

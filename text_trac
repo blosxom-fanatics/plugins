@@ -1,0 +1,30 @@
+#!/usr/bin/perl
+# Blosxom Plugin: text_trac
+# Author: Gosuke Miyashita <miya@mizzy.org>
+# Version: 2006-07-02
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+package text_trac;
+
+use strict;
+use Text::Trac;
+
+sub start {
+  1;
+}
+
+sub story {
+  my($pkg, $path, $filename, $story_ref, $title_ref, $body_ref) = @_;
+
+  if ( $meta::syntax eq 'trac' ){
+      my $parser = Text::Trac->new( min_heading_level => 3 );
+      $parser->parse($$body_ref);
+      $$body_ref = $parser->html;
+  }
+
+  return 1;
+}
+
+1;
+
+__END__

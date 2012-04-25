@@ -1,0 +1,111 @@
+#!/usr/bin/perl
+# Blosxom Plugin: rast
+# Author: Gosuke Miyashita <miya@mizzy.org>
+# Version: 2005-05-03
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+package rast;
+
+use strict;
+use vars qw($query $summary);
+use CGI qw(param url);
+use Rast;
+use HTML::TagFilter;
+
+## --- configurable variables ---
+my $rast_db_dir = "$blosxom::plugin_state_dir/rastdb";
+my $rast_encoding = "euc_jp";
+
+sub start {
+    return 1;
+}
+
+sub filter {
+    my($pkg, $files) = @_;
+
+    ## create rast database
+    ## Usage: blosxom.cgi rast_create_db=1 [recache=all]
+    if (!$ENV{GATEWAY_INTERFACE} and param('rast_create_db')){
+	Rast->create(
+		     "$rast_db_dir",
+		     {
+			 encoding => $rast_encoding,
+			 preserve_text => 1,
+			 properties => [
+					['filename', RAST_TYPE_STRING, RAST_PROPERTY_FLAG_SEARCH|RAST_PROPERTY_FLAG_UNIQUE],
+					['last_modified', RAST_TYPE_DATE, RAST_PROPERTY_FLAG_SEARCH],
+					],
+			 }
+		     );
+	
+    }
+
+    ## reindex database
+    if (!$ENV{GATEWAY_INTERFACE} and param('rast_reindex_db')){
+	my $db = Rast->open("$rast_db_dir", RAST_RDWR, {sync_threshold_chars => 1000000});
+	foreach my $file (keys %$files){
+	    my $time = $files->{$file};
+	    my ($sec,$min,$hour,$mday,$month,$year,$wday,$yday,$isdst) = localtime($time);
+	    my $date = sprintf("%04d-%02d-%02dT%02d:%02d:%02d", $year + 1900, $month + 1, $mday, $hour, $min, $sec);
+	    my $options = [$file, $date];
+	    
+	    open(IN, $file) or die $!;
+	    my @lines = <IN>;
+	    my $lines;
+	    my $tf = HTML::TagFilter->new( allow => {} );
+	    foreach my $line (@lines){
+		if($line !~ /^meta-/){
+		    $lines .= $tf->filter($line);
+		}
+	    }
+
+	    $db->register($lines, $options);
+	}
+	
+	$db->close;
+	
+    }
+
+    ## search rast database
+    if(param('rast_search_query')){
+	$query = param('rast_search_query');
+
+	my $db = Rast->open("$rast_db_dir", RAST_RDWR, {sync_threshold_chars => 1000000});
+	
+	my $result = $db->search(
+				 $query,
+				 {
+				     need_summary => 1,
+				     properties => ['filename', 'last_modified'],
+				 }
+				 );
+	
+	my $hit_files;
+	while(my $row = $result->fetch){
+	    $hit_files->{$row->{properties}->[0]} = $files->{$row->{properties}->[0]};
+	    my @query = split(/\s/, $query);
+	    map { $row->{summary} =~ s!$_!<strong class="search">$_</strong>!gi; } @query;
+	    $summary->{$row->{properties}->[0]} = $row->{summary};
+	}
+	
+	if($result->hit_count){
+	    %$files = %$hit_files;
+	} else {
+	    %$files = {};
+	}
+
+	$db->close;
+    }
+
+}
+
+sub story {
+    my($pkg, $path, $fn, $story_ref, $title_ref, $body_ref) = @_;
+    
+    if(param('rast_search_query')){
+	$$body_ref = '<p class="entryBody">' . $summary->{"$blosxom::datadir$path/$fn.$blosxom::file_extension"} .
+	    " ... <a href='$path/$fn.html'>[全部読む]</a></p>";	  
+    }
+}
+
+1;

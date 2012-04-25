@@ -1,0 +1,50 @@
+#!/usr/bin/perl
+# Blosxom Plugin: same_topic
+# Author: Gosuke Miyashita <miya@mizzy.org>
+# Version: 2005-06-04
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+package same_topic;
+
+use strict;
+use CGI qw(param);
+
+# --- Configurable variables -----------
+my $sort_reverse = 0;
+
+sub start {
+	return 1;
+}
+
+sub filter {
+    my($pkg, $files) = @_;
+
+    if(param('topic')){
+	my $topic = param('topic');
+	$topic =~ s/\d*$//g;
+	my $files_of_topic;
+
+	foreach (keys %$files){
+	    $_ =~ /$topic/i and $' !~ /^[^\.\d]/ and $files_of_topic->{$_} = $files->{$_};
+	}
+	if ($files_of_topic) {
+	    %$files = %$files_of_topic;
+	} else {
+	    %$files = ();
+	}
+	
+    }
+
+    return 1;
+}
+
+sub sort {
+    if(param('topic') and $sort_reverse){
+	return sub {
+	    my($files_ref) = @_;
+	    return sort { $files_ref->{$a} <=> $files_ref->{$b} } keys %$files_ref;
+	};
+    }
+}
+
+1;

@@ -1,0 +1,42 @@
+#!/usr/bin/perl
+# Blosxom Plugin: redirect_permalink
+# Author: Gosuke Miyashita <miya@mizzy.org>
+# Version: 2005-05-04
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+package redirect_permalink;
+
+use strict;
+
+sub start {
+    return 1;
+}
+
+sub last {
+    my ($pkg, $ne) = @_;
+    if($ne eq $blosxom::num_entries){
+	my @path_info = split m{/}, &blosxom::path_info() || param('path'); 
+	my $fn = $path_info[$#path_info];
+	$fn  =~ s/\.$blosxom::flavour//g;
+
+	use vars qw(*name);
+	*name   = *File::Find::name;
+	my $path;
+	File::Find::find(sub { /$fn.$blosxom::file_extension/s and $path = $name;}, "$blosxom::datadir");
+
+	if($path){
+	    $path =~ s/$blosxom::datadir//gi;
+	    $path =~ s/$blosxom::file_extension//gi;
+	    $path .= $blosxom::flavour;
+	    
+	    $blosxom::header = {
+		-status => '301 Moved Permanently',
+		-location => "$blosxom::url$path",
+	    };
+	}
+    }
+
+    return 1;
+}
+
+1;

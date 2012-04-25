@@ -1,0 +1,29 @@
+#!/usr/bin/perl
+# Blosxom Plugin: text_hatena
+# Author: Gosuke Miyashita <miya@mizzy.org>
+# Version: 2005-11-01
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+package text_hatena;
+
+use strict;
+use Text::Hatena;
+
+sub start {
+  1;
+}
+
+sub story {
+  my($pkg, $path, $filename, $story_ref, $title_ref, $body_ref) = @_;
+
+  my $parser = Text::Hatena->new();
+
+  $parser->parse($$body_ref);
+  $$body_ref = $parser->html;
+
+  return 1;
+}
+
+1;
+
+__END__
