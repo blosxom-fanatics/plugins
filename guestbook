@@ -1,0 +1,202 @@
+# Blosxom Plugin: guestbook
+# Author(s): andi (andi@ac.wakwak.com)
+# Version: 0.1
+# Blosxom Home/Docs/Licensing: http://www.raelity.org/apps/blosxom/
+
+package guestbook;
+use strict;
+
+# --- Configurable variables -----
+my $data_file   = "$blosxom::plugin_state_dir/guestbook.dat";
+my $date_format = "yyyy-mm-dd(w) hh:nn:ss";
+my @days_format = qw(Sun Mon Tue Wed Thu Fri Sat);
+my $data_max    = 30;
+my $page_max    = 10;
+my $name_max    = 20;
+my $comment_max = 100;
+my $prev_link_string = "&lt;&lt; prev";
+my $next_link_string = "next &gt;&gt;";
+# --------------------------------
+
+use CGI qw(:standard);
+use FileHandle;
+use Fcntl qw(SEEK_SET);
+
+use vars qw($guestbook $url $package $prev_link $next_link);
+$url = url(-path => 1);
+$package = __PACKAGE__;
+$prev_link = "";
+$next_link = "";
+
+my $boundary = "-----";
+my $msg_part = "<!-- COMMENT -->";
+
+sub start{
+	my($fh,@data);
+
+	if(request_method() eq 'POST' and param('plugin') eq $package){
+		foreach my $name (qw(name comment)){
+			my $value = param($name);
+			$value = CGI->escapeHTML($value);
+			$value =~ s![\r\n]!!g;
+			$value =~ s![\s\t]{2,}! !g;
+			param(-name=>$name,-value=>$value);
+		}
+
+		if(param('name') eq '' or param('comment') eq ''){
+			die("'Name' or 'Comment' is empty...");
+		}
+
+		if(length(param('name')) > $name_max){
+			die("Name :Input less than $name_max bytes");
+		}
+
+		if(length(param('comment')) > $comment_max){
+			die("Name :Input less than $comment_max bytes");
+		}
+
+		if($fh = FileHandle->new($data_file,O_RDWR|O_CREAT)){
+			get_data($fh,\@data);
+			unshift(@data,{
+				 name      => param('name')
+				,comment   => param('comment')
+				,timestamp => time
+				,host      => get_host()
+			});
+			@data = splice(@data,0,$data_max);
+			$fh->seek(0,SEEK_SET);
+			foreach my $data (@data){
+				foreach my $key (qw(name comment timestamp host)){
+					$fh->print("$key:$data->{$key}\n");
+				}
+				$fh->print("$boundary\n");
+			}
+			$fh->truncate($fh->tell);
+		}
+	}
+
+	1;
+}
+
+sub head{
+	make_guestbook(@_);
+}
+
+sub foot{
+	make_guestbook(@_);
+}
+
+sub make_guestbook{
+	my($pkg,$currentdir,$head_or_foot_ref) = @_;
+	my($msg_part_temp,$fh,$i,%param,@data,@msg_part_html);
+
+	if(!$guestbook){
+		read(DATA,$guestbook,-s DATA);
+		$guestbook =~ s!$msg_part(.+)$msg_part!$msg_part!s
+			and $msg_part_temp = $1;
+
+		if($fh = FileHandle->new($data_file,O_RDONLY)){
+			get_data($fh,\@data);
+
+			if(param('gb_page') > 0){
+				local $_ = param('gb_page') - 1;
+				$prev_link = qq{<a href="$url?gb_page=$_">$prev_link_string</a>};
+			}
+			if(param('gb_page') < scalar(@data) / $page_max - 1){
+				local $_ =  param('gb_page') + 1;
+				$next_link = qq{<a href="$url?gb_page=$_">$next_link_string</a>};
+			}
+
+			@data = splice(@data,param('gb_page') * $page_max,$page_max);
+			foreach my $data (@data){
+				$data->{timestamp} = get_date($data->{timestamp});
+				$msg_part_html[$#msg_part_html + 1] = $msg_part_temp;
+				$msg_part_html[$#msg_part_html] =~ s!\$(\w+)!$data->{$1}!g;
+			}
+			$fh->close;
+		}
+
+		{
+			no strict 'refs';
+			$guestbook =~ s!\$(\w+)!${$1}!g;
+		}
+		$guestbook =~ s!$msg_part!join('',@msg_part_html)!e;
+	}
+	$$head_or_foot_ref =~ s!\$guestbook::guestbook!$guestbook!;
+
+	1;
+}
+
+sub get_data{
+	my($fh,$data) = @_;
+	my $i = 0;
+	while(chomp($_ = <$fh>)){
+		if(/^$boundary/){
+			$i ++;
+		}else{
+			m!^(.+?):(.*)$! and $data->[$i]{lc($1)} = $2;
+		}
+	}
+}
+
+sub get_date{
+	my($time) = @_;
+	my($sec,$min,$hour,$day,$mon,$year,$wday) = (localtime($time))[0..6];
+	$year += 1900; $mon ++;
+
+	my @part = split(/([ymdhnsw]+)/,$date_format);
+	shift(@part);
+
+	foreach my $part (@part){
+		if($part =~ /^y/) { $part = substr($year,4 - length($part),4); next; }
+		if($part =~ /^m/) { $part = sprintf("%0*d",length($part),$mon); next; }
+		if($part =~ /^d/) { $part = sprintf("%0*d",length($part),$day); next; }
+		if($part =~ /^h/) { $part = sprintf("%0*d",length($part),$hour); next; }
+		if($part =~ /^n/) { $part = sprintf("%0*d",length($part),$min); next; }
+		if($part =~ /^s/) { $part = sprintf("%0*d",length($part),$sec); next; }
+		if($part =~ /^w/) { $part = $days_format[$wday]; }
+	}
+
+	return join('',@part);
+}
+
+sub get_host{
+	my($addr,$host);
+
+	$addr = remote_addr();
+	$host = remote_host();
+
+	if(!$host || $host eq $addr){
+		$host = gethostbyaddr(pack('C4',split(m!\.!,$addr)),2) || $addr;
+	}
+
+	return $host;
+}
+
+1;
+
+__DATA__
+<div class="guestbook">
+<p>Guest Book ...</p>
+<dl>
+<!-- COMMENT -->
+ <dt>$name</dt>
+ <dd>$comment($timestamp)</dd>
+<!-- COMMENT -->
+</dl>
+$prev_link $next_link
+<form action="$url" method="post">
+ <table>
+  <tr>
+   <th>Name</th>
+   <td><input type="text" name="name"></td>
+  </tr>
+  <tr>
+   <th>Comment</th>
+   <td><textarea name="comment"></textarea></td>
+  </tr>
+ </table>
+<input type="submit" value="submit">
+<input type="hidden" name="plugin" value="$package">
+</form>
+</div>

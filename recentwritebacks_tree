@@ -1,0 +1,181 @@
+# Blosxom Plugin: recentwritebacks_tree
+# Author(s): typester <typester@unknownplace.org>
+# Version: 1.0
+# Blosxom Home/Docs/Licensing: http://www.blosxom.com/
+
+package recentwritebacks_tree;
+
+# --- Configurable variables -----------
+my $data_dir = "$blosxom::plugin_state_dir/writeback";
+my $db_dir = "$blosxom::datadir";
+#my $data_dir = "/virtual/typester/public_html/blosxom/plugins/state/writeback";
+#my $db_dir = "/virtual/typester/public_html/blosxom/db";
+my $wb_extension = "wb";
+my $db_extension = "txt";
+
+# comments
+my $cm_entry = 3;
+my $cm_num = 5;
+# trackbacks
+my $tb_entry = 3;
+my $tb_num = 3;
+# --------------------------------------
+
+use FileHandle;
+use vars qw/$cm_list $tb_list @wb_list/;
+my $fh = new FileHandle;
+
+sub start {
+  #return 0 if ($blosxom::path_info =~ /\./);
+  @wb_list = &createlist($data_dir);
+  $cm_list =  &getwritebacks("comment", $cm_entry, $cm_num);
+  $tb_list = &getwritebacks("excerpt", $tb_entry, $tb_num);
+  return 1;
+}
+
+sub getwritebacks {
+  my ($mode, $entrynum, $num) = (@_);
+  my $count = 0;
+  my $entry = 0;
+  my @tmp = ();
+  my $ret = "<ul>\n";
+  
+  foreach my $file (@wb_list) {
+    @tmp = ();
+    $i = 0;
+    if($fh->open($file)) {
+      foreach (<$fh>) {
+        if($_ =~ /-----$/) {
+          $i++;
+        }else {
+          $tmp[$i] .= $_;
+        }
+      }
+      $fh->close;
+    }
+    $count = 0;
+    my @names = ();
+    #my @dates = ();
+    foreach (reverse(@tmp)) {
+      my ($entrytitle, $body, $url, $name, $date, @dates) = ('', '', '', '', '', ());
+      if($_ =~ /[\r\n]+$mode:(.+)/) {
+        $count++;
+        $body = $1;
+        if($count == 1) {
+          $entrytitle = &gettitle($file);
+          $entry++;
+        }
+      }
+      if($_ =~ /[\r\n]+blog_name:(.+)/ and $_ =~ /[\r\n]+url:(.+)/) {
+        $url = $1;
+      }
+      if($_ =~ /^name:(.+)/ or $_ =~ /[\r\n]+blog_name:(.+)/) {
+        $name = $1;
+      }else {
+        $name = "no name";
+      }
+      if($body ne '') {
+        if($entrytitle ne '') {
+          $ret .= "<li>$entrytitle\n";
+        }
+        if($_ =~ /[\r\n]+date:(\d+)/) {
+          @dates = localtime($1);
+          $date = sprintf("%02d/%02d %02d:%02d", $dates[4]+1, $dates[3], $dates[2], $dates[1]);
+        }
+        if($url ne '') {
+          push(@names, "<li>$date from <a href=\"$url\">$name</a></li>\n");
+        }else {
+          push(@names, "<li>$date by $name</li>\n");
+        }
+      }
+      last if($count >= $num);
+    }
+    if($names[0] ne '') {
+      $ret .= "<ul>\n";
+      foreach my $name (reverse(@names)) {
+        $ret .= $name;
+      }
+      $ret .= "</ul>\n</li>\n";
+    }
+
+    last if($entry >= $entrynum);
+  }
+  $ret .= "</ul>\n";
+  return $ret;
+}
+
+sub gettitle {
+  my $file = $_[0];
+  my $ret = '';
+
+  $file =~ s/$data_dir/$db_dir/;
+  $file =~ s/wb$/txt/;
+
+  if($fh->open($file)) {
+    $ret = <$fh>;
+    $fh->close;
+  }
+  chomp($ret);
+
+  my $url = $blosxom::url;
+  $file =~ s/$db_dir/$url/;
+  $file =~ s/txt$/html/;
+  $ret = "<a href=\"$file\" title=\"$ret\">$ret</a>";
+  return $ret;
+}
+
+sub getdates {
+  my @files = @_;
+  my @dates = ();
+
+  foreach my $file (@files) {
+    my $mtime = (stat($file))[9];
+    push(@dates, $mtime);
+  }
+  return @dates;
+}
+
+sub getfiles {
+  my $dir = $_[0];
+  my @files = ();
+  my @ret = ();
+
+  $dir .= "/" if($dir =~ /[^\/]$/);
+  if(opendir(DIR, $dir)) {
+    @files = readdir(DIR);
+    closedir(DIR);
+  }
+
+  foreach my $file (@files) {
+    next if($file eq '.' or $file eq '..');
+    if(-d "$dir$file" and $file ne '') {
+      my @subdir = &getfiles("$dir$file");
+      @ret = (@ret, @subdir);
+    }else {
+      push(@ret, "$dir$file");
+    }
+  }
+  return @ret;
+}
+
+sub createlist {
+  my @files = &getfiles($_[0]);
+  my @dates = &getdates(@files);
+  my %hash = {};
+  my @ret = ();
+  my $i = 0;
+
+  foreach my $date (@dates) {
+    $hash{$date} = $files[$i];
+    $i++;
+  }
+
+  @dates =  sort {$b <=> $a} @dates;
+  foreach my $date (@dates) {
+    push(@ret, $hash{$date});
+  }
+  return @ret;
+}
+
+1;
+

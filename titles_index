@@ -1,0 +1,54 @@
+# Blosxom Plugin: titles_index
+# Author(s): andi (andi@ac.wakwak.com)
+# Version: 0.1 (2004-02-01)
+# Blosxom Home/Docs/Licensing: http://www.raelity.org/apps/blosxom/
+
+package titles_index;
+use strict;
+
+# --- Configurable variables -----
+my $not_index_on_top = 1;
+my $paginate_display = 10;
+# --------------------------------
+
+my $package = __PACKAGE__;
+my $plugin_off = -1;
+
+sub start{ 1 }
+
+sub filter{
+	package blosxom;
+	if($path_info !~ m!\.$flavour$!
+		and !($not_index_on_top and !$path_info)){
+		$paginate::display = $paginate_display;
+	}else{
+		$plugins{$package} = $plugin_off;
+	}
+}
+
+sub date{
+	my($pkg,$currentdir,$date_ref,$filename,$dw,$mo,$mo_num,$da,$ti,$yr) = @_;
+	$$date_ref =~ s!<.*?>!!g;
+	chomp($$date_ref);
+	$$date_ref = qq{<dt>$$date_ref</dt>\n};
+	1;
+}
+
+sub sort{
+	$blosxom::output .= qq{<dl class="$package">\n};
+	return undef;
+}
+
+sub story{
+	package blosxom;
+	my($pkg,$path,$filename,$story_ref,$title_ref,$body_ref) = @_;
+	$$story_ref = qq{<dd><a href="$url$path/$filename.$flavour">$$title_ref</a></dd>\n};
+	1;
+}
+
+sub foot{
+	$blosxom::output .= qq{</dl>\n};
+	return undef;
+}
+
+1;

@@ -1,0 +1,231 @@
+# Blosxom Plugin: simplepoll
+# Author(s): andi@ac.wakwak.com
+# Version: 0.2 (2004-03-02)
+# Blosxom Home/Docs/Licensing: http://www.raelity.org/blosxom
+
+package simplepoll;
+use strict;
+
+# --- Configurable variables -----
+my $poll_dir        = "$blosxom::plugin_state_dir/simplepoll";
+my $file_extension  = "sp";
+my $poll_img_url    = "/your_path/poll.png";
+my $poll_img_height = 12;
+my $loop_range_tag  = 'tbody';
+# --------------------------------
+
+use CGI qw(:standard);
+use FileHandle;
+use Fcntl qw(SEEK_SET);
+use File::Path;
+
+my $poll_regexp = '<\!--\s*poll\(([^)]+)\)(.*)\s*-->';
+my $options_regexp = '\s*(-\w)\s*([^\-]*)';
+
+use vars qw($package $VERSION);
+$package = __PACKAGE__;
+$VERSION = 0.2;
+
+sub start{
+	my($path,$fn,$entry_file,$data_dir,$data_file,$fh,@data,@temp,%options);
+
+	if(request_method() eq 'POST' and param('plugin') eq $package){
+		($path,$fn) = $blosxom::path_info =~ m!^(?:(.*)/)?(.*)\.[^\.]+$!;
+
+		$data_dir = comb_path($poll_dir,$path);
+		if(!-e($data_dir)){
+			mkpath($data_dir,1,0755);
+		}
+		$data_file = comb_path($data_dir,"$fn.$file_extension");
+
+		$entry_file = comb_path($blosxom::datadir,$path,"$fn.$blosxom::file_extension");
+		if($fh = FileHandle->new($entry_file,O_RDONLY)){
+			while(<$fh>){
+				chomp($_);
+				if(m!$poll_regexp!){
+					@data = map{ [$_,0] } split(/,/,$1);
+					%options = ($2 =~ m!$options_regexp!g);
+					last;
+				}
+			}
+		}else{
+			warn "couldn't read $entry_file\n";
+			return 0;
+		}
+		if(!in_period($options{'-s'},$options{'-e'})){
+			return 1;
+		}
+
+		if(exists($options{'-m'})){
+			@temp = param('item'); # wantarray
+		}else{
+			$temp[0] = param('item');
+		}
+
+		foreach my $data (@data){
+			foreach my $temp (@temp){
+				if($data->[0] eq $temp){
+					$data->[1] = 1;
+					last;
+				}
+			}
+		}
+
+		if($fh = FileHandle->new($data_file,O_RDWR|O_CREAT)){
+			while(<$fh>){
+				chomp($_);
+				my($item,$count) = split(/,/);
+				foreach my $data (@data){
+					if($data->[0] eq $item){
+						$data->[1] += $count;
+						last;
+					}
+				}
+			}
+			$fh->seek(0,SEEK_SET);
+			foreach my $data (@data){
+				$fh->print(join(",",@{$data})."\n");
+			}
+			$fh->truncate($fh->tell);
+		}else{
+			warn "couldn't create or read-write $data_file\n";
+			return 0;
+		}
+	}
+
+	1;
+}
+
+sub story{
+	my($pkg,$path,$fn,$story_ref,$title_ref,$body_ref) = @_;
+	$$body_ref =~ s!$poll_regexp!&make_poll($path,$fn,$1,$2)!e;
+	1;
+}
+
+sub make_poll{
+	my($path,$fn,$items,$options) = @_;
+	my(@data,%options,$total,$fh,$html,$temp,@temp);
+	use vars qw($url $image_url $type $item $count $width $height $percent);
+
+	@data   = map{ [$_,0] } split(/,/,$items);
+	%options = ($options =~ m!$options_regexp!g);
+
+	$total = 0;
+	if($fh = FileHandle->new(comb_path($poll_dir,$path,"$fn.$file_extension"),O_RDONLY)){
+		while(<$fh>){
+			chomp($_);
+			my($item,$count) = split(/,/);
+			foreach my $data (@data){
+				if($data->[0] eq $item){
+					$data->[1] = $count;
+					$total += $count;
+					last;
+				}
+			}
+		}
+	}
+
+	# order by count ...
+	if(exists($options{'-o'})){
+		@data = sort{
+			$options{'-o'} =~ /^d/i
+				? $b->[1] <=> $a->[1] # desc
+				: $a->[1] <=> $b->[1] # asc
+		} @data;
+	}
+
+	$type = exists($options{'-m'}) ? 'checkbox' : 'radio';
+
+	$url = comb_path($blosxom::url,$path,"$fn.$blosxom::default_flavour");
+	$image_url = $poll_img_url;
+	$height = $poll_img_height;
+
+	read(DATA,$html,-s DATA);
+	$html =~ s!__END__.*!!s;
+	$temp = ($html =~ m!<$loop_range_tag>(.*?)</$loop_range_tag>!si)[0];
+	{
+		no strict 'refs';
+		foreach my $data (@data){
+			($item,$count) = @{$data};
+			$percent = ($total ? int($count / $total * 100) : 0);
+			$width = $percent + 1;
+			$temp[$#temp + 1] = $temp;
+			$temp[$#temp] =~ s!\$(\w+)!${$1}!g;
+		}
+		$html =~ s!(<$loop_range_tag>)(.*?)(</$loop_range_tag>)!$1.join('',@temp).$3!sie;
+		$html =~ s!\$(\w+)!${$1}!g;
+		if(!in_period($options{'-s'},$options{'-e'})){
+			$html =~ s!<input[^>]+>!!gi;
+		}
+	}
+
+	return $html;
+}
+
+sub comb_path{
+	my @path = grep{ $_ ne '.' } @_;
+	foreach(@path){
+		s!^/!!; s!/$!!;
+	}
+	return join("/",@path);
+}
+
+sub in_period{
+	my($str,$end) = @_;
+	my($ss,$mm,$hh,$dd,$mo,$yy) = localtime;
+	my $time = sprintf("%04d%02d%02d%02d%02d%02d",$yy+1900,$mo+1,$dd,$hh,$mm,$ss);
+
+	$str =~ s!\D!!g;
+	$str = $str . ('0' x (14 - length($str)));
+	if($time < $str){
+		return 0;
+	}
+
+	$end =~ s!\D!!g;
+	$end = $end . ('9' x (14 - length($end)));
+	if($time > $end){
+		return 0;
+	}
+
+	1;
+}
+
+1;
+
+__DATA__
+<form action="$url" method="post">
+<table summary="simple poll">
+<col class="poll_item">
+<col class="poll_graph">
+<col class="poll_count">
+<thead>
+<tr>
+ <th>Item</th>
+ <th>Graph</th>
+ <th>Count</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+ <td><input type="$type" name="item" value="$item">$item</td>
+ <td><img src="$image_url" width="$width" height="$height" alt="$percent%"></td>
+ <td>$count</td>
+</tr>
+</tbody>
+</table>
+<input type="submit" value="Submit!">
+<input type="hidden" name="plugin" value="$package">
+</form>
+__END__
+
+=head1 NAME
+
+Blosxom Plug-in: simplepoll
+
+=head1 AUTHOR
+
+andi <andi@ac.wakwak.com>, http://park2.wakwak.com/~mono/cgi-bin/blosxom.cgi
+
+=head1 VERSION
+
+0.2
