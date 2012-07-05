@@ -73,8 +73,8 @@ sub getinfo {
   my($index, $file_info) = @_;
 
   my $file = $file_info->[$index];
-  my($path, $fn) = $file =~ m!^$blosxom::datadir/(?:(.*)/)?(.*)\.$blosxom::file_extension!;
-  my $url   = "$url$path/$fn.$blosxom::flavour";
+  my($path, $fn) = $file =~ m!^$blosxom::datadir(?:(/.*)/)?(.*)\.$blosxom::file_extension!;
+  my $url   = "$blosxom::url$path/$fn.$blosxom::flavour";
   my $title = '';
 
   if (-f $file and $fh->open($file)) {
