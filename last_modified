@@ -1,6 +1,6 @@
 # Blosxom Plugin: last_modified
 # Author(s): Kyo Nagashima <kyo@hail2u.net>
-# Version: 2006-09-21
+# Version: 2013-07-29
 # Blosxom Home/Docs/Licensing: http://www.blosxom.com/
 
 package last_modified;
@@ -12,6 +12,8 @@ use vars qw($string);
 
 my $wb_dir = "$blosxom::plugin_state_dir/writeback";
 my $wb_ext = "wb";
+my $cache_control = 'max-age=' . 2 * 60 * 60;
+my $tzd_w3cdtf = "+09:00";
 
 # --- Plug-in package variables --------
 
@@ -70,6 +72,7 @@ sub skip {
     if (defined($since) and $since >= $mtime) {
       $blosxom::header->{-status} = '304 Not Modified';
       $blosxom::header->{-Last_modified} = time2str($mtime);
+      $blosxom::header->{-Cache_control} = $cache_control;
       $blosxom::output = '';
 
       return 1;
@@ -77,6 +80,7 @@ sub skip {
   }
 
   $blosxom::header->{-Last_modified} = time2str($mtime);
+  $blosxom::header->{-Cache_control} = $cache_control;
 
   return 0;
 }
@@ -91,7 +95,7 @@ sub format_time_w3c {
   $hh = sprintf "%02d", $hh;
   $nn = sprintf "%02d", $nn;
   $ss = sprintf "%02d", $ss;
-  $time = "$yy-$mm-$dd" . "T" . "$hh:$nn:$ss+09:00";
+  $time = "$yy-$mm-$dd" . "T" . "$hh:$nn:$ss$tzd_w3cdtf";
 
   return $time;
 }
