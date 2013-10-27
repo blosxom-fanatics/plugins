@@ -1,0 +1,51 @@
+# Blosxom Plugin: static_notfound
+# Author: Kyo Nagashima <kyo@hail2u.net>, http://hail2u.net/
+# Version: 2012-07-13
+# Blosxom Home/Docs/Licensing: http://blosxom.sourceforge.net/
+
+package static_notfound;
+
+use strict;
+use warnings;
+
+# --- Configurable variables -----------
+
+my $notfound_path = '/Library/WebServer/Documents/404.html';
+my $content_type = "text/html; charset=$blosxom::blog_encoding";
+
+# --- Plug-in package variables --------
+
+my $stories = 0;
+my $content = '<!DOCTYPE html><title>404 Not Found</title><p>404 Not Found';
+
+# --------------------------------------
+
+sub start {
+  return 1;
+}
+
+sub story {
+  $stories++;
+
+  return 1;
+}
+
+sub last {
+  if ($stories) {
+    return 1;
+  }
+
+  if (open(my $fh, '<', $notfound_path)) {
+    local $/;
+    $content = <$fh>;
+  }
+
+  $blosxom::header->{-type} = $content_type;
+  $blosxom::header->{-status} = '404 Not Found';
+  $blosxom::output = $content;
+
+  return 1;
+}
+
+1;
+# vim:ft=perl
