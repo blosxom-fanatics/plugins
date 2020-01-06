@@ -310,7 +310,7 @@ sub parsedate {
 	$mi = $5 || 0;
 	$s  = $6 || 0;
 	if (!$8) {
-		$z = 0 - timelocal(0, 0, 0, 1, 0, 70);
+		$z = 0 - timelocal(0, 0, 0, 1, 0, 1970);
 	} elsif ($8 eq 'Z') {
 		$z = 0;
 	} else {
@@ -329,7 +329,7 @@ sub parsedate {
 
 sub datestring {
 	my $time = $_[0];
-	my $z = 0 - timelocal(0, 0, 0, 1, 0, 70);
+	my $z = 0 - timelocal(0, 0, 0, 1, 0, 1970);
 	my $zh = $z / 3600;
 	my $zm = (abs($z) % 3600) / 60;
 	# $zh, $zmの小数部は、後のsprintfにより切り捨てられる。
