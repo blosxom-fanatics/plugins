@@ -162,7 +162,7 @@ sub parseJSON {
     my %detail;
 
     # Amazonへのリンク
-    $detail{"Link"} = "http://www.amazon.co.jp/exec/obidos/ASIN/$asin/ref=nosim/?tag=bigsky-22";
+    $detail{"Link"} = "http://www.amazon.co.jp/exec/obidos/ASIN/$asin/ref=nosim/?tag=$asotag";
 
     # 個々の要素の抽出
     my $item = $info->{ItemsResult}->{Items}[0];
