@@ -1,0 +1,205 @@
+#!/usr/bin/perl
+# ---------------------------------------------------------------------
+# awsxom: AWSからデータを取得して書影その他を作成(PA-API5対応版)
+# Author: Fukazawa Tsuyoshi <tsuyoshi.fukazawa@gmail.com>
+# Version: 2006-11-24
+# http://fukaz55.main.jp/
+# ---------------------------------------------------------------------
+package awsxom;
+
+use strict;
+use Amazon::PAApi5::Payload;
+use Amazon::PAApi5::Signature;
+use HTTP::Headers;
+use LWP::UserAgent;
+use CGI qw/:standard/;
+use FileHandle;
+use JSON;
+use POSIX qw(strftime);
+use Date::Parse;
+
+# --- Plug-in package variables --------
+my $asoid = "AmazonアソシエイトID";                    # AmazonアソシエイトID
+my $devkey = "デベロッパートークン";                   # デベロッパートークン
+my $asotag = "アソシエイトタグ";                       # xxx-22
+my $cachedir = "$blosxom::plugin_state_dir/aws_cache"; # JSONのキャッシュ用ディレクトリ
+my $EXPIRE = 24 * 7;                                   # データを再読込する間隔（単位：時間）
+my $default_template = "awsxom";                       # デフォルトのテンプレートファイル名
+
+my $VERSION = '1.5';
+my $ua_name = "awsxom $VERSION";
+my $debug_mode = 0;
+
+# ---------------------------------------------------------------------
+sub start {
+    # キャッシュ用ディレクトリの作成
+    if (!-e $cachedir) {
+        my $mkdir_r = mkdir($cachedir, 0755);
+        warn $mkdir_r
+        ? "blosxom : aws plugin > \$cachedir, $cachedir, created.\n"
+        : "blosxom : aws plugin > mkdir missed:$!";
+        $mkdir_r or return 0;
+    }
+
+    1;
+}
+
+# ---------------------------------------------------------------------
+sub story {
+    my ($pkg, $path, $filename, $story_ref, $title_ref, $body_ref) = @_;
+    $$body_ref = conv($$body_ref);
+    1;
+}
+
+# ---------------------------------------------------------------------
+sub foot {
+    my($pkg, $currentdir, $foot_ref) = @_;
+    $$foot_ref = conv($$foot_ref);
+    1;
+}
+
+# ---------------------------------------------------------------------
+sub conv {
+    my $content = shift;
+
+    # ASIN/ISBNが書かれていたら置き換える
+    # テンプレート指定版
+    $content =~ s/(?:ASIN|ISBN):([A-Z0-9]{10}):(.*?):/to_html($1,$2)/ge;
+
+    # テンプレート無指定版
+    $content =~ s/(?:ASIN|ISBN):([A-Z0-9]{10})/to_html($1,$default_template)/ge;
+
+    return $content;
+}
+
+# ---------------------------------------------------------------------
+# ASINからAmazonのアフィリエイト用HTMLを作成
+sub to_html {
+    my ($asin, $template) = @_;    # ASINとテンプレ名称
+    my $cache = "$cachedir/$asin.json";
+    # 取り込み直す必要はあるか？
+    if (!(-e $cache) || (-M $cache > ($EXPIRE / 24))) {
+    # AWSから情報を取得してキャッシュファイルに保存
+        my $payload = Amazon::PAApi5::Payload->new(
+            $asotag, 'www.amazon.co.jp'
+        )->to_json({
+            ItemIds => [$asin],
+            Resources => [
+                "Images.Primary.Small",
+                "Images.Primary.Medium",
+                "Images.Primary.Large",
+                "Images.Variants.Small",
+                "Images.Variants.Medium",
+                "Images.Variants.Large",
+                "ItemInfo.ByLineInfo",
+                "ItemInfo.ContentInfo",
+                "ItemInfo.ContentRating",
+                "ItemInfo.Classifications",
+                "ItemInfo.Title",
+                "Offers.Listings.Price",
+                "Offers.Summaries.HighestPrice",
+                "Offers.Summaries.LowestPrice",
+                "Offers.Summaries.OfferCount",
+            ],
+        });
+
+        my $sig = Amazon::PAApi5::Signature->new(
+            $asoid,
+            $devkey,
+            $payload,
+            {
+                resource_path => '/paapi5/getitems',
+                operation     => 'GetItems',
+                host          => 'webservices.amazon.co.jp',
+                region        => 'us-west-2',
+            },
+        );
+        my $ua = LWP::UserAgent->new(
+            default_headers => HTTP::Headers->new($sig->headers),
+        );
+        my $res = $ua->post($sig->req_url, Content => $sig->payload);
+        return undef unless $res->is_success;
+        open my $fh, ">", $cache;
+        print $fh $res->content;
+        close $fh;
+    }
+
+    # キャッシュからJSONを読み込んで解析
+    my $content = getFile($cache);
+    my %detail = parseJSON(JSON->new->utf8(0)->decode($content), $asin);
+
+    # テンプレートを展開。エラーの場合はエラー文字列を返す
+    my $form;
+    if (!defined($detail{"ErrorMsg"})) {
+        $form = &$blosxom::template($blosxom::path, $template, 'html');
+        $form =~ s/\$(\w+)/$detail{$1}/ge;
+    }
+    else {
+        $form = "<p>" . $detail{"ErrorMsg"} . "</p>";
+    }
+
+    return $form;
+}
+
+# ---------------------------------------------------------------------
+# ファイルを読み込む
+sub getFile {
+    my $cache = shift;
+    my $fh = new FileHandle;
+
+    $fh->open($cache);
+    my @data = <$fh>;
+    $fh->close();
+    my $content = join('', @data);
+    return undef if (!$content);
+
+    return $content;
+}
+
+# ---------------------------------------------------------------------
+sub parseJSON {
+    my ($info, $asin) = @_;
+    my %detail;
+
+    # Amazonへのリンク
+    $detail{"Link"} = "http://www.amazon.co.jp/exec/obidos/ASIN/$asin/ref=nosim/?tag=bigsky-22";
+
+    # 個々の要素の抽出
+    my $item = $info->{ItemsResult}->{Items}[0];
+    $detail{"Asin"} = $item->{ASIN};
+    $detail{"ProductName"} = $item->{ItemInfo}->{Title}->{DisplayValue};
+    $detail{"Catalog"} = $item->{ItemInfo}->{Classifications}->{Binding}->{DisplayValue};
+    my $date = str2time($item->{ItemInfo}->{ContentInfo}->{PublicationDate}->{DisplayValue});
+    $detail{"ReleaseDate"} = strftime("%Y年%m月%d日", localtime($date));
+    $detail{"Manufacturer"} = $item->{ItemInfo}->{ByLineInfo}->{Manufacturer}->{DisplayValue};
+    $detail{"ImageUrlSmall"} = $item->{Images}->{Primary}->{Small}->{URL};
+    $detail{"ImageUrlMedium"} = $item->{Images}->{Primary}->{Medium}->{URL};
+    $detail{"ImageUrlLarge"} = $item->{Images}->{Primary}->{Large}->{URL};
+
+    $detail{"Availability"} = $item->{Offers}->{Listings}[0]->{Availability}->{Message};
+    $detail{"ListPrice"} = $item->{Offers}->{Listings}[0]->{Price}->{DisplayAmount};
+    $detail{"OurPrice"} = $item->{Offers}->{Summaries}[0]->{LowestPrice}->{DisplayAmount};
+    $detail{"UsedPrice"} = $item->{Offers}->{Summaries}[1]->{LowestPrice}->{DisplayAmount};
+
+    my $authors;
+    $authors = join(', ', map { $_->{Name} } @{$item->{ItemInfo}->{ByLineInfo}->{Contributors}});
+    $detail{"Author"} = $authors if $authors;
+    $detail{"ImageUrlMedium"} = 'https://images-fe.ssl-images-amazon.com/images/G/09/icons/books/comingsoon_books._V376986337_BO1,204,203,200_.gif' unless $detail{"ImageUrlMedium"} && $detail{"ImageUrlLarge"} && $detail{"ImageUrlSmall"};
+    if ($info->{Message}) {
+        $detail{"ErrorMsg"} = $info->{Message};
+    }
+    return %detail;
+}
+
+# ---------------------------------------------------------------------
+# デバッグ用
+sub print_debug {
+    return if (!$debug_mode);
+
+    my $fd = new FileHandle;
+    $fd->open("awsxom.log", "a");
+    print $fd "$_[0]";
+    $fd->close();
+}
+
+1;
